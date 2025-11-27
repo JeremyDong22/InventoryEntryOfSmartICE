@@ -1,0 +1,30 @@
+# 野百灵库存录入系统 - 语音识别后端
+# v1.0 - 语音录入 → 讯飞ASR → Gemini结构化提取 → JSON
+
+[project]
+name = "inventory-voice-backend"
+version = "0.1.0"
+description = "语音识别后端服务 - 支持四川方言/普通话"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "websockets>=13.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+    "google-generativeai>=0.8.0",
+    "pydantic>=2.9.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]

@@ -1,0 +1,965 @@
+@import "tailwindcss";
+
+/* ========== Tailwind v4 主题配置 ========== */
+@theme {
+  /* ===== 配色方案 - Storm Glass (参考 UI风格A) ===== */
+
+  /* Storm Glass 主色板 - 中性化 */
+  --color-dune-peach: #FFFFFF;
+  --color-apricot-dust: rgba(255, 255, 255, 0.75);
+  --color-ember-rock: #FFFFFF;           /* 强调色改为纯白 */
+  --color-adobe-brown: rgba(255, 255, 255, 0.5);
+  --color-cacao-husk: #25252A;           /* 中性深灰 */
+  --color-midnight-soil: #141419;        /* 中性墨色 */
+  --color-stamp-red: #E85A4F;
+  --color-success-green: #6B9E8A;
+
+  /* 毛玻璃层级颜色 - 中性灰（非蓝色） */
+  --color-glass-bg: rgba(25, 25, 30, 0.45);
+  --color-glass-bg-hover: rgba(25, 25, 30, 0.55);
+  --color-glass-bg-active: rgba(25, 25, 30, 0.4);
+  --color-glass-border: rgba(255, 255, 255, 0.12);
+  --color-glass-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-glass-border-focus: rgba(255, 255, 255, 0.2);
+  --color-glass-highlight: rgba(255, 255, 255, 0.18);
+
+  /* 兼容旧变量名（映射到 Storm Glass） */
+  --color-burnt-orange: #5BA3C0;
+  --color-warm-orange: rgba(255, 255, 255, 0.7);
+  --color-desert-peach: #FFFFFF;
+  --color-soft-peach: #FFFFFF;
+  --color-desert-pink: rgba(255, 255, 255, 0.8);
+  --color-terracotta: rgba(255, 255, 255, 0.5);
+  --color-postcard-cream: #FFFFFF;
+  --color-aged-paper: rgba(255, 255, 255, 0.7);
+  --color-faded-steel: rgba(255, 255, 255, 0.6);
+  --color-harbor-blue: #5BA3C0;
+  --color-ink-charcoal: #1A2634;
+
+  /* 背景层级 - Storm Glass */
+  --color-surface-base: #1A2634;
+  --color-surface-elevated: #2D3A4A;
+  --color-surface-overlay: #2D3A4A;
+
+  /* 文字颜色 - Storm Glass */
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
+  --color-text-muted: rgba(255, 255, 255, 0.5);
+
+  /* 功能色 - Storm Glass */
+  --color-ios-blue: #5BA3C0;
+  --color-ios-green: #6B9E8A;
+  --color-ios-red: #E85A4F;
+  --color-ios-orange: #E8A54C;
+
+  /* 圆角系统 - 更大的液态圆角 */
+  --radius-glass-pill: 9999px;
+  --radius-glass-xl: 36px;
+  --radius-glass-lg: 28px;
+  --radius-glass-md: 20px;
+  --radius-glass-sm: 14px;
+
+  /* 模糊效果 - 增强版 Ultra blur settings */
+  --blur-glass: 24px;
+  --blur-glass-heavy: 40px;
+  --blur-glass-light: 12px;
+  --blur-glass-matte: 16px;
+  --blur-glass-ultra: 56px;
+
+  /* 阴影系统 - Storm Glass 冷色调 */
+  --shadow-glass:
+    0 4px 24px rgba(0, 0, 0, 0.4),
+    0 1px 3px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-glass-elevated:
+    0 8px 40px rgba(0, 0, 0, 0.5),
+    0 4px 16px rgba(0, 0, 0, 0.3),
+    0 1px 4px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --shadow-glass-glow:
+    0 0 60px rgba(91, 163, 192, 0.2),
+    0 0 100px rgba(91, 163, 192, 0.1);
+  --shadow-glass-inset:
+    inset 0 2px 4px rgba(0, 0, 0, 0.15),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-button-primary:
+    0 4px 20px rgba(91, 163, 192, 0.4),
+    0 0 40px rgba(91, 163, 192, 0.2);
+  --shadow-button-danger:
+    0 4px 20px rgba(232, 90, 79, 0.4),
+    0 0 40px rgba(232, 90, 79, 0.2);
+  --shadow-cool-ambient: 0 0 120px rgba(91, 163, 192, 0.15);
+
+  /* 字体系统 - Bold clean typography */
+  --font-sans: 'SF Pro Display', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* 间距系统 - Exquisite breathing room */
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 20px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+  --space-2xl: 64px;
+
+  /* 动画系统 */
+  --animate-slide-in: slideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-scale-up: scaleUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-fade-in: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes scaleUp {
+  0% { transform: scale(0.98); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+/* ========== 组件层 - Warm Organic Glassmorphism 设计系统 ========== */
+@layer components {
+
+  /* ===== 毛玻璃卡片变体 - Storm Glass 冷灰色系 ===== */
+
+  /* 标准毛玻璃卡片 - Storm Glass 深灰色 */
+  .glass-card {
+    background: linear-gradient(
+      135deg,
+      rgba(25, 25, 30, 0.55) 0%,
+      rgba(25, 25, 30, 0.35) 100%
+    );
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-glass-xl);
+    box-shadow: var(--shadow-glass);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      transparent 40%
+    );
+    pointer-events: none;
+  }
+
+  .glass-card:hover {
+    background: linear-gradient(
+      135deg,
+      rgba(25, 25, 30, 0.65) 0%,
+      rgba(25, 25, 30, 0.45) 100%
+    );
+    box-shadow: var(--shadow-glass-elevated);
+    transform: translateY(-2px);
+  }
+
+  /* 高亮毛玻璃卡片 - Storm Glass 深灰色 */
+  .glass-card-elevated {
+    background: linear-gradient(
+      145deg,
+      rgba(25, 25, 30, 0.75) 0%,
+      rgba(25, 25, 30, 0.55) 100%
+    );
+    backdrop-filter: blur(48px) saturate(180%);
+    -webkit-backdrop-filter: blur(48px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-glass-xl);
+    box-shadow: var(--shadow-glass-elevated);
+    position: relative;
+  }
+
+  .glass-card-elevated::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      transparent 35%
+    );
+    pointer-events: none;
+  }
+
+  /* 浅色毛玻璃卡片 - Storm Glass 浅灰白 */
+  .glass-card-light {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+    backdrop-filter: blur(40px) saturate(150%);
+    -webkit-backdrop-filter: blur(40px) saturate(150%);
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-glass-xl);
+    box-shadow: var(--shadow-glass);
+    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+
+  .glass-card-light::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      transparent 40%
+    );
+    pointer-events: none;
+  }
+
+  .glass-card-light:hover {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.1) 100%
+    );
+    transform: translateY(-2px);
+  }
+
+  /* 轻量毛玻璃卡片 - Storm Glass 通透版 */
+  .glass-card-subtle {
+    background: rgba(25, 25, 30, 0.35);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-glass-lg);
+  }
+
+  /* 胶囊形毛玻璃卡片 - Storm Glass 中性灰 */
+  .glass-card-pill {
+    background: linear-gradient(
+      180deg,
+      rgba(25, 25, 30, 0.5) 0%,
+      rgba(25, 25, 30, 0.35) 100%
+    );
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: var(--radius-glass-pill);
+    box-shadow: var(--shadow-glass);
+  }
+
+  /* 超强毛玻璃卡片 - Storm Glass 深色中性 */
+  .glass-card-ultra {
+    background: linear-gradient(
+      135deg,
+      rgba(25, 25, 30, 0.75) 0%,
+      rgba(25, 25, 30, 0.55) 100%
+    );
+    backdrop-filter: blur(56px) saturate(200%);
+    -webkit-backdrop-filter: blur(56px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-top: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-glass-xl);
+    box-shadow:
+      0 12px 48px rgba(0, 0, 0, 0.4),
+      0 4px 16px rgba(0, 0, 0, 0.25),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    position: relative;
+  }
+
+  .glass-card-ultra::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.12) 0%,
+      transparent 30%
+    );
+    pointer-events: none;
+  }
+
+  /* ===== 输入框玻璃效果 - Storm Glass 中性灰 ===== */
+  .glass-input {
+    background: rgba(25, 25, 30, 0.5);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-glass-md);
+    padding: 1rem 1.25rem;
+    color: var(--color-text-primary);
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .glass-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .glass-input:focus {
+    background: rgba(25, 25, 30, 0.6);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 0.1),
+      inset 0 1px 2px rgba(0, 0, 0, 0.08);
+    outline: none;
+  }
+
+  /* ===== 按钮系统 - Storm Glass 冷色风格 ===== */
+
+  /* 主要按钮（Cyan 青色） */
+  .btn-primary {
+    background: linear-gradient(135deg, #5BA3C0 0%, #7BB8CF 100%);
+    color: #FFFFFF;
+    padding: 1rem 2rem;
+    border-radius: var(--radius-glass-pill);
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.01em;
+    box-shadow: var(--shadow-button-primary);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-primary:hover {
+    transform: scale(1.03);
+    box-shadow:
+      0 8px 32px rgba(91, 163, 192, 0.5),
+      0 0 40px rgba(91, 163, 192, 0.25);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.97);
+  }
+
+  /* 次要按钮（深色玻璃态） */
+  .btn-glass {
+    background: var(--color-glass-bg);
+    backdrop-filter: blur(var(--blur-glass-matte));
+    -webkit-backdrop-filter: blur(var(--blur-glass-matte));
+    border: 1px solid var(--color-glass-border);
+    color: var(--color-text-primary);
+    padding: 1rem 1.75rem;
+    border-radius: var(--radius-glass-pill);
+    font-weight: 600;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-glass:hover {
+    background: var(--color-glass-bg-hover);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  /* 幽灵按钮（透明） */
+  .btn-ghost {
+    background: transparent;
+    color: var(--color-text-secondary);
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--radius-glass-md);
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .btn-ghost:hover {
+    background: rgba(25, 25, 30, 0.4);
+    color: var(--color-text-primary);
+  }
+
+  /* Cyan 强调按钮 */
+  .btn-ios-blue {
+    background: #5BA3C0;
+    color: #FFFFFF;
+    padding: 1rem 2rem;
+    border-radius: var(--radius-glass-pill);
+    font-weight: 700;
+    box-shadow:
+      0 4px 20px rgba(91, 163, 192, 0.4),
+      0 0 40px rgba(91, 163, 192, 0.2);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-ios-blue:hover {
+    transform: scale(1.03);
+  }
+
+  .btn-ios-blue:active {
+    transform: scale(0.97);
+  }
+
+  /* Stamp Red 警示按钮（删除/危险操作） */
+  .btn-danger {
+    background: var(--color-stamp-red);
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: var(--radius-glass-pill);
+    font-weight: 700;
+    box-shadow: var(--shadow-button-danger);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-danger:hover {
+    transform: scale(1.03);
+    box-shadow:
+      0 8px 32px rgba(232, 90, 79, 0.5),
+      0 0 40px rgba(232, 90, 79, 0.25);
+  }
+
+  .btn-danger:active {
+    transform: scale(0.97);
+  }
+
+  /* 深蓝灰沉稳按钮 */
+  .btn-warm {
+    background: linear-gradient(135deg, #2D3A4A 0%, #3D4E60 100%);
+    color: #FFFFFF;
+    padding: 1rem 2rem;
+    border-radius: var(--radius-glass-pill);
+    font-weight: 700;
+    box-shadow:
+      0 4px 20px rgba(45, 58, 74, 0.4),
+      0 0 40px rgba(45, 58, 74, 0.2);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-warm:hover {
+    transform: scale(1.03);
+  }
+
+  /* ===== 浮动操作栏 - 中性灰 ===== */
+  .floating-island {
+    background: linear-gradient(
+      180deg,
+      rgba(25, 25, 30, 0.75) 0%,
+      rgba(25, 25, 30, 0.55) 100%
+    );
+    backdrop-filter: blur(56px) saturate(180%);
+    -webkit-backdrop-filter: blur(56px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-top: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: var(--radius-glass-pill);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.35),
+      0 4px 12px rgba(0, 0, 0, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    position: relative;
+  }
+
+  .floating-island::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.1) 0%,
+      transparent 50%
+    );
+    pointer-events: none;
+  }
+
+  /* ===== 内容区域 - Breathing room ===== */
+  .content-breathing {
+    padding: var(--space-xl);
+  }
+
+  .section-breathing {
+    margin-bottom: var(--space-lg);
+  }
+}
+
+/* ========== 基础层 - Warm Immersive Atmosphere ========== */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-surface-base);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Storm Glass - 云海日落背景 + 中性叠加层 */
+    background:
+      /* 中性深灰叠加层 - 让暖色背景自然透出 */
+      linear-gradient(
+        135deg,
+        rgba(20, 20, 25, 0.7) 0%,
+        rgba(30, 30, 35, 0.5) 50%,
+        rgba(20, 20, 25, 0.75) 100%
+      ),
+      /* 云海日落实景背景 */
+      url('/backgrounds/cloud-sunset.jpg') center/cover fixed no-repeat;
+    min-height: 100vh;
+  }
+
+  /* Bold clean typography */
+  h1, h2, h3 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  h1 {
+    font-size: 2rem;
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  h3 {
+    font-size: 1.125rem;
+    line-height: 1.4;
+  }
+
+  /* 隐藏滚动条 */
+  ::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+  }
+
+  /* 选中文本样式 - Storm Glass */
+  ::selection {
+    background: rgba(91, 163, 192, 0.4);
+    color: #FFFFFF;
+  }
+}
+
+/* ========== 工具类 - Elegant Utilities ========== */
+@layer utilities {
+  /* iOS 安全区域 */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* ===== 语音录音边框动画 ===== */
+  .voice-recording-border {
+    border: 1.5px solid rgba(239, 68, 68, 0.6);
+    animation: voice-border-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3), inset 0 0 8px rgba(239, 68, 68, 0.1);
+  }
+
+  @keyframes voice-border-pulse {
+    0%, 100% {
+      border-color: rgba(239, 68, 68, 0.4);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.2), inset 0 0 4px rgba(239, 68, 68, 0.05);
+    }
+    50% {
+      border-color: rgba(239, 68, 68, 0.8);
+      box-shadow: 0 0 16px rgba(239, 68, 68, 0.5), inset 0 0 10px rgba(239, 68, 68, 0.15);
+    }
+  }
+
+  /* ===== 背景色工具类 ===== */
+  .bg-glass-bg {
+    background: var(--color-glass-bg);
+  }
+
+  .bg-glass-bg-hover {
+    background: var(--color-glass-bg-hover);
+  }
+
+  .bg-surface-base {
+    background: var(--color-surface-base);
+  }
+
+  .bg-surface-elevated {
+    background: var(--color-surface-elevated);
+  }
+
+  .bg-burnt-orange {
+    background: var(--color-burnt-orange);
+  }
+
+  .bg-warm-orange {
+    background: var(--color-warm-orange);
+  }
+
+  .bg-desert-peach {
+    background: var(--color-desert-peach);
+  }
+
+  .bg-desert-pink {
+    background: var(--color-desert-pink);
+  }
+
+  .bg-ios-green {
+    background: var(--color-ios-green);
+  }
+
+  .bg-ios-blue {
+    background: var(--color-ios-blue);
+  }
+
+  .bg-ios-red {
+    background: var(--color-ios-red);
+  }
+
+  /* Cacao Night 配色工具类 */
+  .bg-dune-peach {
+    background: var(--color-dune-peach);
+  }
+
+  .bg-apricot-dust {
+    background: var(--color-apricot-dust);
+  }
+
+  .bg-ember-rock {
+    background: var(--color-ember-rock);
+  }
+
+  .bg-adobe-brown {
+    background: var(--color-adobe-brown);
+  }
+
+  .bg-cacao-husk {
+    background: var(--color-cacao-husk);
+  }
+
+  .bg-midnight-soil {
+    background: var(--color-midnight-soil);
+  }
+
+  .bg-stamp-red {
+    background: var(--color-stamp-red);
+  }
+
+  .bg-success-green {
+    background: var(--color-success-green);
+  }
+
+  /* 兼容旧类名 */
+  .bg-postcard-cream {
+    background: var(--color-dune-peach);
+  }
+
+  .bg-aged-paper {
+    background: var(--color-apricot-dust);
+  }
+
+  .bg-faded-steel {
+    background: var(--color-adobe-brown);
+  }
+
+  .bg-harbor-blue {
+    background: var(--color-ember-rock);
+  }
+
+  /* ===== 文字颜色工具类 ===== */
+  .text-primary {
+    color: var(--color-text-primary);
+  }
+
+  .text-secondary {
+    color: var(--color-text-secondary);
+  }
+
+  .text-muted {
+    color: var(--color-text-muted);
+  }
+
+  .text-desert-peach {
+    color: var(--color-desert-peach);
+  }
+
+  .text-burnt-orange {
+    color: var(--color-burnt-orange);
+  }
+
+  .text-warm-orange {
+    color: var(--color-warm-orange);
+  }
+
+  .text-desert-pink {
+    color: var(--color-desert-pink);
+  }
+
+  .text-ios-blue {
+    color: var(--color-ios-blue);
+  }
+
+  .text-ios-green {
+    color: var(--color-ios-green);
+  }
+
+  .text-ios-red {
+    color: var(--color-ios-red);
+  }
+
+  .text-ios-orange {
+    color: var(--color-ios-orange);
+  }
+
+  /* Cacao Night 文字颜色 */
+  .text-dune-peach {
+    color: var(--color-dune-peach);
+  }
+
+  .text-apricot-dust {
+    color: var(--color-apricot-dust);
+  }
+
+  .text-ember-rock {
+    color: var(--color-ember-rock);
+  }
+
+  .text-adobe-brown {
+    color: var(--color-adobe-brown);
+  }
+
+  .text-cacao-husk {
+    color: var(--color-cacao-husk);
+  }
+
+  .text-midnight-soil {
+    color: var(--color-midnight-soil);
+  }
+
+  .text-stamp-red {
+    color: var(--color-stamp-red);
+  }
+
+  .text-success-green {
+    color: var(--color-success-green);
+  }
+
+  /* 兼容旧类名 */
+  .text-postcard-cream {
+    color: var(--color-dune-peach);
+  }
+
+  .text-aged-paper {
+    color: var(--color-apricot-dust);
+  }
+
+  .text-faded-steel {
+    color: var(--color-adobe-brown);
+  }
+
+  .text-harbor-blue {
+    color: var(--color-ember-rock);
+  }
+
+  .text-ink-charcoal {
+    color: var(--color-midnight-soil);
+  }
+
+  /* ===== 边框颜色工具类 ===== */
+  .border-glass-border {
+    border-color: var(--color-glass-border);
+  }
+
+  /* ===== 模糊效果工具类 ===== */
+  .backdrop-blur-glass {
+    backdrop-filter: blur(var(--blur-glass));
+    -webkit-backdrop-filter: blur(var(--blur-glass));
+  }
+
+  .backdrop-blur-glass-heavy {
+    backdrop-filter: blur(var(--blur-glass-heavy));
+    -webkit-backdrop-filter: blur(var(--blur-glass-heavy));
+  }
+
+  .backdrop-blur-glass-light {
+    backdrop-filter: blur(var(--blur-glass-light));
+    -webkit-backdrop-filter: blur(var(--blur-glass-light));
+  }
+
+  /* ===== 圆角工具类 ===== */
+  .rounded-glass-pill {
+    border-radius: var(--radius-glass-pill);
+  }
+
+  .rounded-glass-xl {
+    border-radius: var(--radius-glass-xl);
+  }
+
+  .rounded-glass-lg {
+    border-radius: var(--radius-glass-lg);
+  }
+
+  .rounded-glass-md {
+    border-radius: var(--radius-glass-md);
+  }
+
+  .rounded-glass-sm {
+    border-radius: var(--radius-glass-sm);
+  }
+
+  /* ===== 阴影工具类 ===== */
+  .shadow-glass {
+    box-shadow: var(--shadow-glass);
+  }
+
+  .shadow-glass-elevated {
+    box-shadow: var(--shadow-glass-elevated);
+  }
+
+  .shadow-button-primary {
+    box-shadow: var(--shadow-button-primary);
+  }
+
+  /* 文字渐变 - Storm Glass */
+  .text-gradient-warm {
+    background: linear-gradient(135deg, #FFFFFF 0%, rgba(255, 255, 255, 0.8) 50%, #5BA3C0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-burnt {
+    background: linear-gradient(135deg, #5BA3C0 0%, #7BB8CF 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .text-gradient-cacao {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, #5BA3C0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* 光晕效果 - Storm Glass cool glow */
+  .glow-warm {
+    box-shadow: var(--shadow-glass-glow);
+  }
+
+  .glow-ambient {
+    box-shadow: var(--shadow-cool-ambient);
+  }
+
+  /* 呼吸空间工具类 */
+  .breathing-sm {
+    padding: var(--space-sm);
+  }
+
+  .breathing-md {
+    padding: var(--space-md);
+  }
+
+  .breathing-lg {
+    padding: var(--space-lg);
+  }
+
+  .breathing-xl {
+    padding: var(--space-xl);
+  }
+
+  /* 间距工具类 */
+  .gap-breathing {
+    gap: var(--space-lg);
+  }
+
+  .gap-breathing-sm {
+    gap: var(--space-md);
+  }
+
+  /* 字体工具类 - Bold clean */
+  .text-bold-clean {
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .text-label {
+    font-size: 0.875rem;    /* 14px (原 10px) - 增大可读性 */
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  /* ===== 极细数字字体 - 参考 UI风格A 温度数字 ===== */
+  /* 主金额数字 - 参考 UI风格A 的 18° (适中大小，极细字重) */
+  .text-hero-number {
+    font-size: 3.5rem;      /* 56px - iPhone 14-17 适配 */
+    font-weight: 300;       /* Light */
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: #FFFFFF;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.25);
+  }
+
+  .text-hero-number-lg {
+    font-size: 6rem;        /* 96px */
+    font-weight: 100;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    color: #FFFFFF;
+    text-shadow: 0 3px 24px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Widget 数字 - 参考 UI风格A 下方的 28°, 26° */
+  .text-hero-number-sm {
+    font-size: 2.5rem;      /* 40px */
+    font-weight: 300;       /* Light */
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .text-hero-number-xs {
+    font-size: 1.75rem;     /* 28px - iPhone 14-17 适配 */
+    font-weight: 400;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  /* 动画延迟 */
+  .animate-delay-100 {
+    animation-delay: 100ms;
+  }
+
+  .animate-delay-200 {
+    animation-delay: 200ms;
+  }
+
+  .animate-delay-300 {
+    animation-delay: 300ms;
+  }
+}

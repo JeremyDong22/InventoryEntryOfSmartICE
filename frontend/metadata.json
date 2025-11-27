@@ -1,0 +1,7 @@
+{
+  "name": "入库工具",
+  "description": "An AI-powered daily procurement and inventory entry tool for store staff. Use natural language to automatically log incoming stock and costs.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
