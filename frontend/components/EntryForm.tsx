@@ -1,5 +1,6 @@
 
 // EntryForm - 采购录入表单
+// v1.6 - 添加物品删除按钮，始终可见，Storm Glass 风格悬停效果
 // v1.5 - 重构语音 UI：移除浮动弹窗，集成到底部 bar，添加发光边框动画
 // v1.4 - 修复语音录入 WebSocket 自动关闭问题，支持连续录音
 // v1.3 - 清除 Mock 数据预填充，添加灰色占位符文本，添加语音录入实时转录
@@ -344,7 +345,7 @@ const WorksheetScreen: React.FC<{
           <div className="space-y-3">
             {items.map((item, index) => (
               <GlassCard key={index} padding="md" className="relative group">
-                 {/* Top Row: Name & Remove */}
+                 {/* Top Row: Name & Delete */}
                  <div className="flex items-start justify-between mb-4">
                     <input
                       type="text"
@@ -353,11 +354,12 @@ const WorksheetScreen: React.FC<{
                       onChange={(e) => onItemChange(index, 'name', e.target.value)}
                       className="flex-1 bg-transparent text-[13px] font-bold text-primary placeholder-muted outline-none"
                     />
-                    {items.length > 1 && (
-                       <button onClick={() => onRemoveItem(index)} className="text-muted hover:text-ios-red transition-colors pl-2">
-                         <Icons.Trash className="w-4 h-4" />
-                       </button>
-                    )}
+                    <button
+                      onClick={() => onRemoveItem(index)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-ios-red hover:bg-ios-red/10 transition-all ml-2"
+                    >
+                      <Icons.Trash className="w-4 h-4" />
+                    </button>
                  </div>
 
                  {/* Grid Row: Data Inputs */}
