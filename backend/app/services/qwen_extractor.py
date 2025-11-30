@@ -1,0 +1,184 @@
+# Qwen 结构化提取服务
+# v1.3 - 使用阿里云通义千问 API 将语音识别文本转换为采购清单 JSON
+# v1.1: 优化 specification 字段格式，使用斜杠分隔包装规格（用于最小单位计算）
+# v1.2: 精简 prompt，移除方言处理（由讯飞 ASR 处理）
+# v1.3: 移除 Mock 模式，API 错误时抛出异常
+# 替代 Gemini 的中国本土化方案，使用 OpenAI 兼容接口
+
+import os
+import json
+import asyncio
+from openai import OpenAI, APIError, RateLimitError
+from typing import Optional
+
+from app.models.voice_entry import VoiceEntryResult, ProcurementItem
+
+
+class QwenExtractorService:
+    """
+    通义千问结构化数据提取服务
+    将语音识别的自然语言文本转换为结构化的采购清单 JSON
+    使用 Alibaba Cloud Model Studio (DashScope) API
+    """
+
+    # 提取提示词模板 (精简版)
+    # 注意: JSON 中的花括号需要双写 {{ }} 以转义 Python str.format()
+    EXTRACTION_PROMPT = """将采购语音转为JSON。输出格式：
+{{"supplier":"供应商","notes":"备注","items":[{{"name":"商品名","specification":"规格","quantity":数量,"unit":"单位","unitPrice":单价,"total":小计}}]}}
+
+规则：
+- total = quantity × unitPrice（自动计算）
+- specification：包装商品用"最小单位/采购单位"格式（如"24瓶/箱"、"5L/桶"），散装用属性（如"去皮"），无则留空
+- 无供应商时supplier为空字符串
+
+示例：
+输入: "永辉超市，农夫山泉3箱每箱24瓶28块一箱，可口可乐2箱35一箱"
+输出: {{"supplier":"永辉超市","notes":"","items":[{{"name":"农夫山泉","specification":"24瓶/箱","quantity":3,"unit":"箱","unitPrice":28,"total":84}},{{"name":"可口可乐","specification":"","quantity":2,"unit":"箱","unitPrice":35,"total":70}}]}}
+
+输入: "双汇直供，去皮五花肉30斤68一斤，带骨排骨20斤45一斤，肉质不错"
+输出: {{"supplier":"双汇直供","notes":"肉质不错","items":[{{"name":"去皮五花肉","specification":"去皮","quantity":30,"unit":"斤","unitPrice":68,"total":2040}},{{"name":"带骨排骨","specification":"带骨","quantity":20,"unit":"斤","unitPrice":45,"total":900}}]}}
+
+语音输入: {text}
+直接输出JSON："""
+
+    # API 端点配置
+    BASE_URL_INTL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    BASE_URL_CHINA = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    def __init__(self):
+        """
+        初始化 Qwen 服务
+        环境变量:
+        - QWEN_API_KEY 或 DASHSCOPE_API_KEY: API 密钥 (必需)
+        - QWEN_BASE_URL: 可选，自定义端点
+        """
+        api_key = os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
+        base_url = os.getenv("QWEN_BASE_URL", self.BASE_URL_CHINA)
+        self.model = os.getenv("QWEN_MODEL", "qwen-plus")
+
+        if not api_key:
+            raise ValueError("[QwenExtractor] 错误: 未配置 QWEN_API_KEY 环境变量")
+
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
+        self.available = True
+        print(f"[QwenExtractor] 已配置 Qwen API ({self.model}) - {base_url}")
+
+    def _extract_json_from_response(self, text: str) -> dict:
+        """
+        从响应中提取 JSON，处理可能的 markdown 代码块
+        """
+        import re
+
+        # 尝试直接解析
+        try:
+            return json.loads(text)
+        except:
+            pass
+
+        # 尝试提取 ```json ... ``` 代码块
+        json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1).strip())
+            except:
+                pass
+
+        # 尝试找到 { ... } 结构
+        brace_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if brace_match:
+            try:
+                return json.loads(brace_match.group(0))
+            except:
+                pass
+
+        raise json.JSONDecodeError("无法从响应中提取 JSON", text, 0)
+
+    async def extract(self, text: str, max_retries: int = 3) -> VoiceEntryResult:
+        """
+        从语音识别文本提取结构化数据（带重试机制）
+
+        Args:
+            text: ASR 识别的原始文本
+            max_retries: 速率限制错误最大重试次数
+
+        Returns:
+            VoiceEntryResult: 结构化的采购清单
+
+        Raises:
+            ValueError: 输入文本为空
+            APIError: API 调用失败
+            json.JSONDecodeError: JSON 解析失败
+        """
+        if not text.strip():
+            raise ValueError("输入文本为空")
+
+        prompt = self.EXTRACTION_PROMPT.format(text=text)
+        response = None
+
+        # 带重试的 API 调用
+        for attempt in range(max_retries):
+            try:
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "你是一个专业的采购清单解析助手。请输出 JSON 格式的结构化数据。"
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                )
+                break
+
+            except RateLimitError as e:
+                wait_time = (2 ** attempt) * 5
+                print(f"[QwenExtractor] 429 速率限制，等待 {wait_time}s 后重试 ({attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise APIError(f"速率限制，重试 {max_retries} 次后仍失败") from e
+
+            except APIError as e:
+                print(f"[QwenExtractor] API 错误: {e}")
+                raise
+
+            except Exception as e:
+                print(f"[QwenExtractor] 调用错误: {type(e).__name__}: {e}")
+                raise
+
+        # 解析响应
+        response_text = response.choices[0].message.content
+        if not response_text:
+            raise ValueError("Qwen API 返回空响应")
+
+        result_json = self._extract_json_from_response(response_text)
+
+        # 转换为 Pydantic 模型
+        items = [
+            ProcurementItem(
+                name=item.get("name", ""),
+                specification=item.get("specification", ""),
+                quantity=float(item.get("quantity", 0)),
+                unit=item.get("unit", ""),
+                unitPrice=float(item.get("unitPrice", 0)),
+                total=float(item.get("total", 0))
+            )
+            for item in result_json.get("items", [])
+        ]
+
+        print(f"[QwenExtractor] 提取成功: {result_json.get('supplier')}, {len(items)} 项")
+        return VoiceEntryResult(
+            supplier=result_json.get("supplier", ""),
+            notes=result_json.get("notes", ""),
+            items=items
+        )
+
+
+# 单例实例
+qwen_extractor = QwenExtractorService()

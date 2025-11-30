@@ -1,7 +1,8 @@
 # 语音录入 API 路由
-# v2.2 - 实时流式语音识别 WebSocket + REST 备用接口
+# v2.3 - 实时流式语音识别 WebSocket + REST 备用接口
 # v2.1: 支持连续录音会话，收到识别结果后不关闭 WebSocket
-# v2.2: 添加 stop_recording 信号，通知前端停止发送音频（配合后端 v3.3）
+# v2.2: 添加 stop_recording 信号，通知前端停止发送音频
+# v2.3: 切换到 Qwen (通义千问) 替代 Gemini 作为结构化提取服务
 # 支持 WebM -> PCM 音频格式转换，实时返回部分识别结果
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
@@ -17,7 +18,8 @@ from typing import Optional
 
 from app.models.voice_entry import VoiceEntryResult, VoiceMessage, ASRStatus
 from app.services.xunfei_asr import xunfei_asr
-from app.services.gemini_extractor import gemini_extractor
+# v2.3: 切换到 Qwen (通义千问) 作为结构化提取服务
+from app.services.qwen_extractor import qwen_extractor
 
 
 async def convert_audio_to_pcm(audio_data: bytes, input_format: str = "webm") -> bytes:
@@ -135,7 +137,7 @@ async def voice_entry_websocket(websocket: WebSocket):
                     })
 
                     # Step 2: 结构化提取
-                    result = await gemini_extractor.extract(raw_text)
+                    result = await qwen_extractor.extract(raw_text)
                     print(f"[VoiceWS] 提取结果: {result.model_dump()}")
 
                     # 发送最终结果
@@ -216,7 +218,7 @@ async def transcribe_audio(
         print(f"[VoiceAPI] ASR 结果: {raw_text}")
 
         # Step 2: 结构化提取
-        result = await gemini_extractor.extract(raw_text)
+        result = await qwen_extractor.extract(raw_text)
 
         return JSONResponse(content={
             "success": True,
@@ -248,7 +250,7 @@ async def extract_from_text(input_data: TextInput):
         VoiceEntryResult: 结构化的采购清单
     """
     try:
-        result = await gemini_extractor.extract(input_data.text)
+        result = await qwen_extractor.extract(input_data.text)
         return JSONResponse(content={
             "success": True,
             "result": result.model_dump()
@@ -265,7 +267,7 @@ async def health_check():
     return {
         "status": "ok",
         "services": {
-            "xunfei_asr": "configured" if xunfei_asr.app_id else "mock_mode",
-            "gemini_extractor": "configured" if gemini_extractor.available else "mock_mode"
+            "xunfei_asr": "configured",
+            "qwen_extractor": "configured"
         }
     }

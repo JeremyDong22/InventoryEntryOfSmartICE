@@ -1,6 +1,7 @@
 # 野百灵库存录入系统 - 语音识别后端
-# v1.0 - FastAPI 应用入口
-# 功能: 语音录入 → 讯飞ASR → Gemini结构化提取 → JSON
+# v1.1 - FastAPI 应用入口
+# v1.1: 切换 Gemini → Qwen (通义千问)
+# 功能: 语音录入 → 讯飞ASR → Qwen结构化提取 → JSON
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,10 +70,10 @@ async def startup_event():
 
     # 检查环境变量配置
     xunfei_configured = bool(os.getenv("XUNFEI_APP_ID")) and bool(os.getenv("XUNFEI_API_KEY"))
-    gemini_configured = bool(os.getenv("GEMINI_API_KEY"))
+    qwen_configured = bool(os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY"))
 
     print(f"讯飞 ASR: {'已配置' if xunfei_configured else 'Mock 模式'}")
-    print(f"Gemini:   {'已配置' if gemini_configured else 'Mock 模式'}")
+    print(f"Qwen:     {'已配置' if qwen_configured else 'Mock 模式'}")
     print("=" * 50)
 
 
