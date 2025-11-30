@@ -23,6 +23,11 @@ InventoryEntryOfSmartICE/
 │   │   └── models/           # 数据模型
 │   └── CLAUDE.md             # 后端详细文档
 │
+├── keep-alive-worker/        # Cloudflare Worker 保活服务
+│   ├── index.js              # Worker 代码
+│   └── wrangler.toml         # Wrangler 配置
+│
+├── render.yaml               # Render 部署配置 (后端)
 ├── .gitignore
 └── CLAUDE.md                 # 本文件
 ```
@@ -128,7 +133,52 @@ VITE_VOICE_BACKEND_URL=http://localhost:8000
 
 ## 部署
 
-Monorepo 支持分别部署：
+### 生产环境
 
-- **Frontend**: Vercel/Netlify (根目录设为 `frontend/`)
-- **Backend**: Railway/Render (根目录设为 `backend/`)
+| 服务 | 平台 | URL |
+|------|------|-----|
+| **前端** | Cloudflare Pages | https://inv.smartice.ai |
+| **后端** | Render | https://inventoryentryofsmartice.onrender.com |
+| **保活** | Cloudflare Workers | https://smartice-keep-alive.hengd2.workers.dev |
+
+### 架构图
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Cloudflare                           │
+│  ┌──────────────────┐    ┌──────────────────────────┐  │
+│  │ Pages (前端)      │    │ Worker (保活)            │  │
+│  │ inv.smartice.ai  │    │ 每 5 分钟 ping 后端      │  │
+│  └────────┬─────────┘    └────────────┬─────────────┘  │
+└───────────┼───────────────────────────┼────────────────┘
+            │                           │
+            └───────────┬───────────────┘
+                        ↓
+         ┌──────────────────────────────┐
+         │        Render (后端)          │
+         │ inventoryentryofsmartice     │
+         │ .onrender.com                │
+         └──────────────────────────────┘
+```
+
+### 部署命令
+
+**前端** (Cloudflare Pages)：自动部署，推送 main 分支即可
+
+**后端** (Render)：自动部署，推送 main 分支即可
+
+**保活 Worker** (Cloudflare Workers)：
+```bash
+cd keep-alive-worker
+wrangler deploy
+```
+
+### 环境变量配置
+
+**Render 后端**：
+- `XUNFEI_APP_ID`, `XUNFEI_API_KEY`, `XUNFEI_API_SECRET`
+- `QWEN_API_KEY`
+- `CORS_ORIGINS=https://inv.smartice.ai`
+
+**Cloudflare Pages 前端**：
+- `VITE_VOICE_BACKEND_URL=https://inventoryentryofsmartice.onrender.com`
