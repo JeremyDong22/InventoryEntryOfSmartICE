@@ -1,8 +1,9 @@
 // 语音录入服务
-// v2.3 - 实时流式语音识别，WebSocket 音频流传输，支持连续录音会话
+// v2.4 - 实时流式语音识别，WebSocket 音频流传输，支持连续录音会话
 // v2.1: 修复收到识别结果后不关闭 WebSocket，允许多次录音
 // v2.2: 优化 buffer size 从 4096 降至 1024，减少 ~192ms 延迟
 // v2.3: 处理 stop_recording 信号，当讯飞 VAD 检测到静音时立即停止发送音频
+// v2.4: 修复竞态条件 - 在 getUserMedia 等待期间 WebSocket 状态可能变化
 // 与后端 inventory-entry-backend 配合使用，实时返回部分识别结果
 
 import { ProcurementItem } from '../types';
@@ -102,8 +103,17 @@ class VoiceEntryService {
       this.ws = new WebSocket(WS_URL);
 
       this.ws.onopen = async () => {
-        console.log('[VoiceEntry] WebSocket 已连接');
-        await this.startNewRecordingSession();
+        console.log('[VoiceEntry] WebSocket onopen 触发，状态:', this.ws?.readyState);
+
+        // v2.4: 等待 WebSocket 真正处于 OPEN 状态（某些浏览器 onopen 触发时状态可能还未更新）
+        await this.waitForWebSocketReady();
+
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          await this.startNewRecordingSession();
+        } else {
+          console.error('[VoiceEntry] WebSocket 未就绪，放弃录音');
+          this.updateStatus('error', 'WebSocket 连接不稳定，请重试');
+        }
       };
 
       this.ws.onmessage = (event) => {
@@ -136,9 +146,16 @@ class VoiceEntryService {
 
   /**
    * 开始新的录音会话（复用 WebSocket）
+   * v2.4: 修复竞态条件 - 在 getUserMedia 等待期间 WebSocket 状态可能变化
    */
   private async startNewRecordingSession(): Promise<void> {
     try {
+      // v2.4: 先检查 WebSocket 状态
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        console.error('[VoiceEntry] WebSocket 未就绪，状态:', this.ws?.readyState);
+        throw new Error('WebSocket 连接未就绪，请重试');
+      }
+
       // 请求麦克风权限
       this.mediaStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -148,6 +165,13 @@ class VoiceEntryService {
           noiseSuppression: true,
         }
       });
+
+      // v2.4: getUserMedia 后再次检查 WebSocket 状态（可能在等待权限时断开）
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        console.error('[VoiceEntry] 获取麦克风权限后 WebSocket 已断开');
+        this.stopMediaStream();
+        throw new Error('WebSocket 连接已断开，请重试');
+      }
 
       // 创建 AudioContext
       this.audioContext = new AudioContext({ sampleRate: 16000 });
@@ -179,11 +203,14 @@ class VoiceEntryService {
       this.audioSource.connect(this.audioProcessor);
       this.audioProcessor.connect(this.audioContext.destination);
 
-      // 发送开始信号
-      this.ws!.send(JSON.stringify({ type: 'start' }));
-
-      this.updateStatus('recording', '正在录音...');
-      console.log('[VoiceEntry] 开始实时录音');
+      // v2.4: 最终检查并发送开始信号
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ type: 'start' }));
+        this.updateStatus('recording', '正在录音...');
+        console.log('[VoiceEntry] 开始实时录音');
+      } else {
+        throw new Error('WebSocket 在发送前断开');
+      }
 
     } catch (error: any) {
       console.error('[VoiceEntry] 麦克风访问失败:', error);
@@ -191,6 +218,43 @@ class VoiceEntryService {
       this.updateStatus('error', error.message || '无法访问麦克风');
       throw error;
     }
+  }
+
+  /**
+   * v2.4: 停止媒体流（不清理 WebSocket）
+   */
+  private stopMediaStream(): void {
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+      this.mediaStream = null;
+    }
+  }
+
+  /**
+   * v2.4: 等待 WebSocket 真正处于 OPEN 状态
+   * 某些浏览器在 onopen 触发时 readyState 可能还未更新
+   */
+  private waitForWebSocketReady(): Promise<void> {
+    return new Promise((resolve) => {
+      const maxAttempts = 10;
+      let attempts = 0;
+
+      const checkReady = () => {
+        attempts++;
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          console.log('[VoiceEntry] WebSocket 已就绪，尝试次数:', attempts);
+          resolve();
+        } else if (attempts < maxAttempts && this.ws) {
+          // 每 50ms 检查一次，最多等待 500ms
+          setTimeout(checkReady, 50);
+        } else {
+          console.warn('[VoiceEntry] WebSocket 等待超时，状态:', this.ws?.readyState);
+          resolve(); // 超时也继续，让后续代码处理错误
+        }
+      };
+
+      checkReady();
+    });
   }
 
   /**
