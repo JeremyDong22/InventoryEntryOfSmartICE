@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v1.9 - 添加收货订单图片上传区，集成到信息卡片中
 // v1.8 - 语音录入交互优化：识别后可编辑文本，点击发送按钮才解析填充表单
 // v1.7 - UI 重构：隐藏相机/文件按钮，文本框多行滚动，提交按钮移至物品列表区域
 // v1.6 - 添加物品删除按钮，始终可见，Storm Glass 风格悬停效果
@@ -299,57 +300,52 @@ const WorksheetScreen: React.FC<{
                 className="glass-input w-full resize-none py-4 leading-normal"
              />
           </div>
-        </GlassCard>
 
-        {/* 凭证图片预览区 - Storm Glass 风格 */}
-        {attachedImages.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-1">
-              <span className="text-sm font-medium text-white/70">凭证图片</span>
-              <span className="text-xs text-white/50">{attachedImages.length} 张</span>
-            </div>
-            <div className="flex gap-3 overflow-x-auto pb-2 px-1">
-              {attachedImages.map((img) => (
-                <div key={img.id} className="relative flex-shrink-0 group">
-                  {/* 缩略图 */}
-                  <img
-                    src={`data:${img.mimeType};base64,${img.thumbnail || img.data}`}
-                    alt="凭证"
-                    className="w-16 h-16 object-cover rounded-xl border border-white/15"
-                    style={{
-                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-                    }}
-                  />
-                  {/* 识别状态徽章 */}
-                  {img.recognized && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center border-2 border-[#1a1a1f]">
-                      <Icons.Check className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                  {/* 识别中指示 */}
-                  {!img.recognized && (
-                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center border-2 border-[#1a1a1f]">
-                      <div className="w-2.5 h-2.5 border border-white border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                  )}
-                  {/* 删除按钮 - 悬停显示 */}
-                  <button
-                    onClick={() => onRemoveImage(img.id)}
-                    className="absolute -bottom-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border-2 border-[#1a1a1f]"
-                  >
-                    <Icons.X className="w-3 h-3 text-white" />
-                  </button>
-                  {/* 文件大小 */}
-                  {img.compressedSize && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[8px] text-white/80 text-center py-0.5 rounded-b-xl">
-                      {formatFileSize(img.compressedSize)}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+          {/* v1.9: 收货订单图片上传区 */}
+          <div>
+             <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
+               收货订单
+             </label>
+             <div className="flex flex-wrap gap-3">
+               {/* 已上传的收货单图片 */}
+               {attachedImages.map((img) => (
+                 <div key={img.id} className="relative group">
+                   <img
+                     src={`data:${img.mimeType};base64,${img.thumbnail || img.data}`}
+                     alt="收货单"
+                     className="w-20 h-20 object-cover rounded-xl border border-white/15"
+                     style={{
+                       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
+                     }}
+                   />
+                   {/* 删除按钮 */}
+                   <button
+                     onClick={() => onRemoveImage(img.id)}
+                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
+                   >
+                     <Icons.X className="w-3.5 h-3.5 text-white" />
+                   </button>
+                 </div>
+               ))}
+
+               {/* 上传按钮 - 拍照/选择图片 */}
+               <button
+                 onClick={() => cameraInputRef.current?.click()}
+                 disabled={isAnalyzing}
+                 className="w-20 h-20 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-40"
+               >
+                 {isAnalyzing ? (
+                   <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                 ) : (
+                   <>
+                     <Icons.Camera className="w-6 h-6 text-white/50" />
+                     <span className="text-[10px] text-white/40">拍照上传</span>
+                   </>
+                 )}
+               </button>
+             </div>
           </div>
-        )}
+        </GlassCard>
 
         {/* List Section */}
         <div>
