@@ -616,7 +616,7 @@ const TranscriptionBox: React.FC<{
               ? '正在聆听...'
               : voiceStatus === 'processing'
                 ? '正在处理...'
-                : '点击麦克风开始语音录入'
+                : '尝试用AI帮忙录入，请用正常说话的方式说出你想录入的内容'
           }
           disabled={voiceStatus === 'recording' || voiceStatus === 'processing'}
           rows={1}
