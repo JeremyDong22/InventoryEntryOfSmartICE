@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppView } from '../types';
 import { Icons } from '../constants';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   currentView: AppView;
@@ -9,13 +10,40 @@ interface SidebarProps {
   toggleSidebar: () => void;
 }
 
+// 职位代码转中文
+function getPositionLabel(code: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    super_admin: '超级管理员',
+    brand_admin: '品牌管理员',
+    region_manager: '区域经理',
+    city_manager: '城市经理',
+    store_manager: '店长',
+    supervisor: '主管',
+    trainer: '培训师',
+    employee: '员工',
+  };
+  return labels[code || ''] || '员工';
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, toggleSidebar }) => {
+  const { user } = useAuth();
+
+  // 用户首字母/姓名前两字
+  const userInitials = user?.name?.substring(0, 2) || user?.username?.substring(0, 2) || 'U';
+  const positionLabel = getPositionLabel(user?.position_code);
+  const storeName = user?.store_name || '未绑定门店';
+
   const navItems = [
     { id: AppView.DASHBOARD, label: '工作台', icon: Icons.ChartBar },
     { id: AppView.NEW_ENTRY, label: '开始录入', icon: Icons.PlusCircle },
     { id: AppView.HISTORY, label: '历史记录', icon: Icons.Clock },
-    // 设计助手已移除 - 前后端分离重构
   ];
+
+  // 点击用户头像跳转个人中心
+  const handleProfileClick = () => {
+    onChangeView(AppView.PROFILE);
+    if (isOpen) toggleSidebar(); // 移动端关闭侧边栏
+  };
 
   return (
     <>
@@ -56,17 +84,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isO
 
            {/* User Profile - Mobile */}
            <div className="mt-auto mb-6 px-2">
-             <div className="flex items-center gap-3 p-3 rounded-glass-xl cursor-pointer transition-all hover:bg-white/10"
-                  style={{
-                    background: 'rgba(255,255,255,0.08)',
-                    border: '1px solid rgba(255,255,255,0.1)'
-                  }}>
+             <div
+               onClick={handleProfileClick}
+               className="flex items-center gap-3 p-3 rounded-glass-xl cursor-pointer transition-all hover:bg-white/10 active:bg-white/15"
+               style={{
+                 background: currentView === AppView.PROFILE ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)',
+                 border: currentView === AppView.PROFILE ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.1)'
+               }}
+             >
                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>JD</div>
-               <div>
-                 <div className="text-sm font-semibold text-white">店长</div>
-                 <div className="text-xs text-white/60">德阳店</div>
+                    style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>
+                 {userInitials}
                </div>
+               <div className="flex-1">
+                 <div className="text-sm font-semibold text-white">{positionLabel}</div>
+                 <div className="text-xs text-white/60">{storeName}</div>
+               </div>
+               <Icons.ChevronRight className="w-4 h-4 text-white/40" />
              </div>
            </div>
         </div>
@@ -115,17 +149,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isO
 
         {/* User Profile - Bottom */}
         <div className="mt-auto mb-10 px-2">
-          <div className="flex items-center gap-4 p-3 rounded-glass-xl cursor-pointer transition-all hover:bg-white/10"
-               style={{
-                 background: 'rgba(255,255,255,0.08)',
-                 border: '1px solid rgba(255,255,255,0.1)'
-               }}>
+          <div
+            onClick={handleProfileClick}
+            className="flex items-center gap-4 p-3 rounded-glass-xl cursor-pointer transition-all hover:bg-white/10 active:bg-white/15"
+            style={{
+              background: currentView === AppView.PROFILE ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.08)',
+              border: currentView === AppView.PROFILE ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.1)'
+            }}
+          >
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                 style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>JD</div>
-            <div>
-              <div className="text-sm font-semibold text-white">店长</div>
-              <div className="text-xs text-white/60">德阳店</div>
+                 style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>
+              {userInitials}
             </div>
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-white">{positionLabel}</div>
+              <div className="text-xs text-white/60">{storeName}</div>
+            </div>
+            <Icons.ChevronRight className="w-4 h-4 text-white/40" />
           </div>
         </div>
       </div>

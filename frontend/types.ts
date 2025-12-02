@@ -45,7 +45,33 @@ export enum AppView {
   DASHBOARD = 'DASHBOARD',
   NEW_ENTRY = 'NEW_ENTRY',
   HISTORY = 'HISTORY',
-  // DESIGN_ASSISTANT 已移除 - 前后端分离重构
+  PROFILE = 'PROFILE',       // 个人中心
+  APPROVAL = 'APPROVAL',     // 审批管理
+}
+
+// ============ Admin Service Types ============
+
+// 待审批账号类型
+export interface PendingAccount {
+  account_id: string;
+  phone: string | null;
+  username: string | null;
+  status: string;
+  created_at: string;
+  employee_id: string;
+  employee_name: string;
+  invitation_code: string | null;
+  store_id: string;
+  store_name: string;
+}
+
+// 分页响应类型
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 // ============ Gemini Design Service Types ============
