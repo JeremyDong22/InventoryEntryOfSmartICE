@@ -1,8 +1,9 @@
 /**
  * 入库数据提交服务
- * v3.1 - 图片上传失败时阻止提交
+ * v3.2 - 添加进度回调，优化 UI 反馈
  *
  * 变更历史：
+ * - v3.2: 添加 onProgress 回调函数，支持进度 UI 显示
  * - v3.1: 图片上传失败时立即返回错误，不继续插入数据
  * - v3.0: 移除 SKU 匹配，简化提交流程，支持图片分类
  * - v2.1: 添加 total_amount 采购总价字段
@@ -34,21 +35,33 @@ export interface PendingMatch {
   rawValue: string;
 }
 
+// ============ 进度回调类型 ============
+
+export type SubmitProgress =
+  | 'uploading_receipt'   // 正在上传收货单图片
+  | 'uploading_goods'     // 正在上传货物图片
+  | 'saving_data'         // 正在保存数据
+  | 'success';            // 提交成功
+
+export type OnProgressCallback = (progress: SubmitProgress) => void;
+
 // ============ 主提交函数 ============
 
 /**
  * 提交采购数据到数据库
- * v3.0 - 简化版，移除 SKU 逻辑
+ * v3.2 - 添加进度回调
  *
  * @param dailyLog - 前端录入的日志数据
  * @param storeId - 门店 UUID
  * @param employeeId - 员工 UUID
+ * @param onProgress - 进度回调函数（可选）
  * @returns 提交结果
  */
 export async function submitProcurement(
   dailyLog: Omit<DailyLog, 'id'>,
   storeId: string,
-  employeeId: string
+  employeeId: string,
+  onProgress?: OnProgressCallback
 ): Promise<SubmitResult> {
   const result: SubmitResult = {
     success: false,
@@ -83,8 +96,10 @@ export async function submitProcurement(
   let goodsImageUrl: string | undefined;
 
   // v3.1: 图片上传失败时立即返回错误，不继续插入数据
+  // v3.2: 通过 onProgress 回调报告进度
   if (dailyLog.receiptImage) {
     try {
+      onProgress?.('uploading_receipt');
       console.log('[提交] 上传收货单图片...');
       receiptImageUrl = await uploadImageToStorage(
         dailyLog.receiptImage.data,
@@ -102,6 +117,7 @@ export async function submitProcurement(
 
   if (dailyLog.goodsImage) {
     try {
+      onProgress?.('uploading_goods');
       console.log('[提交] 上传货物图片...');
       goodsImageUrl = await uploadImageToStorage(
         dailyLog.goodsImage.data,
@@ -198,12 +214,14 @@ export async function submitProcurement(
   // 批量插入
   if (records.length > 0) {
     try {
+      onProgress?.('saving_data');
       console.log(`[提交] 准备插入 ${records.length} 条记录`);
       const inserted = await createPurchasePrices(records);
       result.insertedCount = inserted.length;
 
       if (inserted.length > 0) {
         result.success = true;
+        onProgress?.('success');
         console.log(`[提交] 成功插入 ${inserted.length} 条记录`);
       } else {
         result.errors.push('数据插入失败：未返回任何记录');

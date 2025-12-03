@@ -1,6 +1,7 @@
+// v3.3.0 - 仪表板数据从数据库获取
 // v3.2.0 - EntryForm 欢迎页传递菜单回调
 // v3.1.0 - 添加登录页面路由
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { EntryForm } from './components/EntryForm';
@@ -8,92 +9,35 @@ import { LoginPage } from './components/LoginPage';
 import { DailyLog, AppView } from './types';
 import { Icons } from './constants';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-
-const INITIAL_DATA: DailyLog[] = [
-  { 
-    id: '1', 
-    date: new Date(Date.now() - 86400000 * 6).toISOString(), 
-    category: 'Meat', 
-    supplier: '双汇肉业', 
-    items: [
-      { name: '五花肉', specification: '精选带皮', quantity: 80, unit: '斤', unitPrice: 12.5, total: 1000 },
-      { name: '排骨', specification: '肋排', quantity: 40, unit: '斤', unitPrice: 22, total: 880 }
-    ],
-    totalCost: 1880,
-    notes: '排骨质量不错',
-    status: 'Stocked'
-  },
-  { 
-    id: '2', 
-    date: new Date(Date.now() - 86400000 * 5).toISOString(), 
-    category: 'Vegetables', 
-    supplier: '城南蔬菜批发', 
-    items: [
-      { name: '青椒', specification: '薄皮', quantity: 20, unit: '斤', unitPrice: 4.5, total: 90 },
-      { name: '土豆', specification: '大个', quantity: 100, unit: '斤', unitPrice: 1.2, total: 120 }
-    ],
-    totalCost: 210,
-    notes: '',
-    status: 'Stocked'
-  },
-  { 
-    id: '3', 
-    date: new Date(Date.now() - 86400000 * 4).toISOString(), 
-    category: 'Dry Goods',
-    supplier: '麦德龙批发中心', 
-    items: [
-      { name: '面粉', specification: '25kg/袋', quantity: 10, unit: '袋', unitPrice: 95, total: 950 },
-      { name: '食用油', specification: '20L/桶', quantity: 5, unit: '桶', unitPrice: 220, total: 1100 }
-    ],
-    totalCost: 2050,
-    notes: '粮油储备补货',
-    status: 'Stocked'
-  },
-  { 
-    id: '4', 
-    date: new Date(Date.now() - 86400000 * 3).toISOString(), 
-    category: 'Alcohol',
-    supplier: '雪花啤酒直供', 
-    items: [
-      { name: '雪花勇闯', specification: '12瓶/箱', quantity: 50, unit: '箱', unitPrice: 38, total: 1900 }
-    ],
-    totalCost: 1900,
-    notes: '周末备货',
-    status: 'Stocked'
-  },
-  { 
-    id: '5', 
-    date: new Date(Date.now() - 86400000 * 2).toISOString(), 
-    category: 'Meat', 
-    supplier: '刘记牛羊肉', 
-    items: [
-      { name: '牛肉卷', specification: '肥牛', quantity: 30, unit: '斤', unitPrice: 35, total: 1050 }
-    ],
-    totalCost: 1050,
-    notes: '',
-    status: 'Stocked'
-  },
-  { 
-    id: '6', 
-    date: new Date(Date.now() - 86400000 * 1).toISOString(), 
-    category: 'Vegetables', 
-    supplier: '每日鲜配送', 
-    items: [
-      { name: '生菜', specification: '新鲜', quantity: 15, unit: '斤', unitPrice: 3.5, total: 52.5 },
-      { name: '番茄', specification: '普罗旺斯', quantity: 20, unit: '斤', unitPrice: 5.5, total: 110 }
-    ],
-    totalCost: 162.5,
-    notes: '叶菜需注意保鲜',
-    status: 'Stocked'
-  }
-];
+import { getPurchaseLogs } from './services/dashboardService';
 
 // 主应用内容（需要在 AuthProvider 内部使用）
 const AppContent: React.FC = () => {
   const { user, isAuthenticated, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
-  const [logs, setLogs] = useState<DailyLog[]>(INITIAL_DATA);
+  const [logs, setLogs] = useState<DailyLog[]>([]);
+  const [logsLoading, setLogsLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // 从数据库加载采购记录
+  useEffect(() => {
+    async function loadLogs() {
+      if (!isAuthenticated) return;
+
+      setLogsLoading(true);
+      try {
+        const data = await getPurchaseLogs(user?.store_id || undefined, 30);
+        setLogs(data);
+        console.log(`[Dashboard] 加载了 ${data.length} 条采购记录`);
+      } catch (err) {
+        console.error('[Dashboard] 加载采购记录失败:', err);
+      } finally {
+        setLogsLoading(false);
+      }
+    }
+
+    loadLogs();
+  }, [isAuthenticated, user?.store_id]);
 
   // 从认证上下文获取用户名
   const CURRENT_USER_NAME = user?.name || "用户";
@@ -112,12 +56,23 @@ const AppContent: React.FC = () => {
     return <LoginPage />;
   }
 
-  const handleSaveEntry = (logData: Omit<DailyLog, 'id'>) => {
-    const newLog: DailyLog = {
-      ...logData,
-      id: Math.random().toString(36).substr(2, 9),
-    };
-    setLogs(prev => [...prev, newLog]);
+  // 刷新采购记录
+  const refreshLogs = async () => {
+    setLogsLoading(true);
+    try {
+      const data = await getPurchaseLogs(user?.store_id || undefined, 30);
+      setLogs(data);
+    } catch (err) {
+      console.error('[Dashboard] 刷新采购记录失败:', err);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const handleSaveEntry = async (logData: Omit<DailyLog, 'id'>) => {
+    // 数据已通过 EntryForm -> inventoryService 提交到数据库
+    // 这里刷新数据并返回仪表板
+    await refreshLogs();
     setCurrentView(AppView.DASHBOARD);
   };
 
@@ -177,7 +132,15 @@ const AppContent: React.FC = () => {
         )}
 
         <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
-            {currentView === AppView.DASHBOARD && <Dashboard logs={logs} />}
+            {currentView === AppView.DASHBOARD && (
+              logsLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-white/70">加载数据中...</div>
+                </div>
+              ) : (
+                <Dashboard logs={logs} />
+              )
+            )}
             {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} onOpenMenu={() => setSidebarOpen(true)} />}
             {currentView === AppView.HISTORY && <HistoryView />}
         </main>
