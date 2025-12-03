@@ -59,7 +59,7 @@ InventoryEntryOfSmartICE/
 | 表名 | 说明 |
 |------|------|
 | `ims_users` | 用户表（用户名、密码、姓名、角色、门店） |
-| `ims_stores` | 门店表（门店编码、名称、地址、状态） |
+| `ims_stores` | 门店表（兼容旧版，实际使用 `ims_ref_store`） |
 
 **用户角色**：`super_admin` / `store_manager` / `chef` / `employee`
 
@@ -82,11 +82,19 @@ VALUES ('zhangsan', '123456', '张三', 'chef', 'store-uuid');
 
 | 表名 | 说明 |
 |------|------|
-| `ims_supplier` | 供应商表 |
-| `ims_product` | 产品表 |
-| `ims_product_sku` | 产品 SKU 表 |
-| `ims_unit_of_measure` | 计量单位表 |
-| `ims_store_purchase_price` | 门店采购价格记录表 |
+| `ims_ref_supplier` | 供应商表 |
+| `ims_material` | 物料/产品表 |
+| `ims_material_sku` | 物料 SKU 表 |
+| `ims_ref_unit` | 计量单位表 |
+| `ims_material_price` | 采购价格记录表 |
+| `ims_ref_store` | 门店表 |
+| `ims_ref_category` | 分类表 |
+
+### Storage Bucket
+
+| Bucket | 说明 |
+|--------|------|
+| `ims-receipts` | 采购凭证图片（收货单/货物照片） |
 
 详细 Schema 见 `supabase/SCHEMA.md`
 

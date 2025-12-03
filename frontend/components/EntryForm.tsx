@@ -1309,11 +1309,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         // 保存到本地（仅在提交成功后）
         onSave(logData);
 
-        // 显示结果 2 秒后清除状态并返回主页
+        // 显示结果 2 秒后清除状态并返回分类选择页
         setTimeout(() => {
           setSubmitMessage('');
           setIsSubmitting(false);
-          setStep('WELCOME'); // 返回主页
+          // 重置表单状态
+          setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
+          setSupplier('');
+          setSupplierOther('');
+          setNotes('');
+          setReceiptImage(null);
+          setGoodsImage(null);
+          setStep('CATEGORY'); // 返回分类选择页，方便继续录入
         }, 2000);
 
       } catch (err) {
