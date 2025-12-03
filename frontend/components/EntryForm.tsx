@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v3.7 - 收货单和货物照片必填验证 + 移动端（iOS/Android）相机相册兼容性优化
 // v3.6 - 调整UI顺序：图片上传在前，供应商/备注在后，避免AI识别覆盖用户手动输入
 // v3.5 - 修复产品下拉选择不自动填入的 bug（React 状态竞态问题）
 // v3.4 - 收货单识别 UX 优化：上传后显示"AI识别"按钮，点击触发识别
@@ -321,10 +322,10 @@ const WorksheetScreen: React.FC<{
         <GlassCard padding="md" className="space-y-4">
           {/* 图片上传区 - 收货单支持多张，AI识别按钮移至下方 */}
           <div className="space-y-3">
-            {/* 收货单图片（多张） */}
+            {/* 收货单图片（多张）- 必填 */}
             <div>
               <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-                收货单照片
+                收货单照片 <span className="text-ios-red text-sm">*必填</span>
               </label>
               {/* 图片行：已上传的图片 + 添加按钮 */}
               <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -403,19 +404,21 @@ const WorksheetScreen: React.FC<{
                   <span>已识别 {receiptImages.length} 张收货单</span>
                 </div>
               )}
+              {/* v3.7: 移动端兼容性优化 - 不使用 capture 属性，让用户选择相机或相册 */}
               <input
                 type="file"
                 ref={receiptInputRef}
                 onChange={onReceiptImageUpload}
                 accept="image/*"
-                className="hidden"
+                className="absolute opacity-0 w-0 h-0 pointer-events-none"
+                aria-label="上传收货单照片"
               />
             </div>
 
-            {/* 货物图片 */}
+            {/* 货物图片 - 必填 */}
             <div>
               <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-                货物照片
+                货物照片 <span className="text-ios-red text-sm">*必填</span>
               </label>
               <div className="flex items-center gap-3">
                 {/* 已上传的货物图片 */}
@@ -453,12 +456,14 @@ const WorksheetScreen: React.FC<{
                   </button>
                 )}
               </div>
+              {/* v3.7: 移动端兼容性优化 - 不使用 capture 属性，让用户选择相机或相册 */}
               <input
                 type="file"
                 ref={goodsInputRef}
                 onChange={onGoodsImageUpload}
                 accept="image/*"
-                className="hidden"
+                className="absolute opacity-0 w-0 h-0 pointer-events-none"
+                aria-label="上传货物照片"
               />
             </div>
           </div>
@@ -1415,6 +1420,17 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const calculateGrandTotal = () => items.reduce((acc, curr) => acc + curr.total, 0);
 
   const handleWorksheetSubmit = () => {
+    // v3.7: 图片必填验证 - 收货单和货物照片都是必填项
+    if (receiptImages.length === 0) {
+        alert('请上传收货单照片（必填）');
+        return;
+    }
+
+    if (!goodsImage) {
+        alert('请上传货物照片（必填）');
+        return;
+    }
+
     // 检查是否有物品
     if (items.length === 0) {
         alert("请至少录入一项物品");
