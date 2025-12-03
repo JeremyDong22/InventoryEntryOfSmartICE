@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v3.0 - 重构图片上传：收货单+货物分开，供应商"其他"选项，AI开关（默认关）
 // v2.6 - 欢迎页添加右上角菜单按钮，修复分类页返回按钮导航
 // v2.5 - 合并"拍照"和"相册"按钮为单一"添加"按钮
 // v2.4 - 单位输入改为自由文本（移除自动完成），修复总价为空时的页面崩溃
@@ -7,11 +8,6 @@
 // v2.0 - 单位输入改为下拉列表，移除单位映射表，直接使用 unitId
 // v1.9 - 添加收货订单图片上传区，集成到信息卡片中
 // v1.8 - 语音录入交互优化：识别后可编辑文本，点击发送按钮才解析填充表单
-// v1.7 - UI 重构：隐藏相机/文件按钮，文本框多行滚动，提交按钮移至物品列表区域
-// v1.6 - 添加物品删除按钮，始终可见，Storm Glass 风格悬停效果
-// v1.5 - 重构语音 UI：移除浮动弹窗，集成到底部 bar，添加发光边框动画
-// v1.4 - 修复语音录入 WebSocket 自动关闭问题，支持连续录音
-// v1.3 - 清除 Mock 数据预填充，添加灰色占位符文本，添加语音录入实时转录
 
 import React, { useState, useRef, useEffect } from 'react';
 import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types';
@@ -225,13 +221,20 @@ const CategoryScreen: React.FC<{ onSelect: (cat: CategoryType) => void; onBack: 
 
 // --- Worksheet Screen ---
 
+// v3.0 - 新增 props：
+// - supplierOther + onSupplierOtherChange: "其他"供应商名称
+// - receiptImage + goodsImage: 分类图片
+// - aiAutoFill + onAiAutoFillChange: AI 自动填入开关
 const WorksheetScreen: React.FC<{
   items: ProcurementItem[];
   supplier: string;
+  supplierOther: string;
   notes: string;
   isAnalyzing: boolean;
   grandTotal: number;
-  attachedImages: AttachedImage[];
+  receiptImage: AttachedImage | null;
+  goodsImage: AttachedImage | null;
+  aiAutoFill: boolean;
   voiceStatus: RecordingStatus;
   voiceMessage: string;
   transcriptionText: string;
@@ -239,23 +242,30 @@ const WorksheetScreen: React.FC<{
   isSendingTranscription: boolean;
   onBack: () => void;
   onSupplierChange: (val: string) => void;
+  onSupplierOtherChange: (val: string) => void;
   onNotesChange: (val: string) => void;
   onItemChange: (index: number, field: keyof ProcurementItem, value: any) => void;
   onAddItem: () => void;
   onRemoveItem: (index: number) => void;
-  onImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onRemoveImage: (id: string) => void;
+  onReceiptImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onGoodsImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemoveReceiptImage: () => void;
+  onRemoveGoodsImage: () => void;
+  onAiAutoFillChange: (val: boolean) => void;
   onVoiceStart: () => void;
   onVoiceStop: () => void;
   onTranscriptionChange: (text: string) => void;
   onSendTranscription: () => void;
   onReview: () => void;
 }> = ({
-  items, supplier, notes, isAnalyzing, grandTotal, attachedImages,
+  items, supplier, supplierOther, notes, isAnalyzing, grandTotal, receiptImage, goodsImage, aiAutoFill,
   voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription,
-  onBack, onSupplierChange, onNotesChange, onItemChange, onAddItem, onRemoveItem, onImageUpload, onRemoveImage, onVoiceStart, onVoiceStop, onTranscriptionChange, onSendTranscription, onReview
+  onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onAddItem, onRemoveItem,
+  onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAiAutoFillChange,
+  onVoiceStart, onVoiceStop, onTranscriptionChange, onSendTranscription, onReview
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const receiptInputRef = useRef<HTMLInputElement>(null);
+  const goodsInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const prevItemsLengthRef = useRef<number>(items.length);
   const isInitialMountRef = useRef<boolean>(true);
@@ -303,15 +313,33 @@ const WorksheetScreen: React.FC<{
 
         {/* Info Section - Card Layer */}
         <GlassCard padding="md" className="space-y-4">
+          {/* v3.0: 供应商选择 + "其他"选项 */}
           <AutocompleteInput
             label="供应商全称"
             value={supplier}
             onChange={onSupplierChange}
-            placeholder="输入供应商名称..."
+            placeholder="输入供应商名称或选择'其他'"
             searchFn={searchSuppliers}
             debounceMs={300}
             minChars={1}
+            extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
           />
+          {/* v3.0: "其他"供应商输入框 - 仅当选择"其他"时显示 */}
+          {supplier === '其他' && (
+            <div className="animate-slide-in">
+              <label className="block text-[16px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
+                请输入供应商名称
+              </label>
+              <input
+                type="text"
+                value={supplierOther}
+                onChange={(e) => onSupplierOtherChange(e.target.value)}
+                placeholder="供应商全称..."
+                className="glass-input w-full py-3"
+              />
+            </div>
+          )}
+
           <div>
              <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
                备注信息
@@ -325,52 +353,125 @@ const WorksheetScreen: React.FC<{
              />
           </div>
 
-          {/* v1.9: 收货订单图片上传区 */}
-          <div>
-             <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-               收货订单
-             </label>
-             <div className="flex flex-wrap gap-3">
-               {/* 已上传的收货单图片 */}
-               {attachedImages.map((img) => (
-                 <div key={img.id} className="relative group">
-                   <img
-                     src={`data:${img.mimeType};base64,${img.thumbnail || img.data}`}
-                     alt="收货单"
-                     className="w-20 h-20 object-cover rounded-xl border border-white/15"
-                     style={{
-                       boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)'
-                     }}
-                   />
-                   {/* 删除按钮 */}
-                   <button
-                     onClick={() => onRemoveImage(img.id)}
-                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
-                   >
-                     <Icons.X className="w-3.5 h-3.5 text-white" />
-                   </button>
-                 </div>
-               ))}
+          {/* v3.0: 图片上传区 - 两个独立按钮（收货单 + 货物） */}
+          <div className="space-y-3">
+            {/* 收货单图片 + AI开关 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[20px] tracking-wider text-zinc-500 font-bold ml-1">
+                  收货单照片
+                </label>
+                {/* AI 自动填入开关 */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/50">AI识别</span>
+                  <button
+                    onClick={() => onAiAutoFillChange(!aiAutoFill)}
+                    className={`relative w-11 h-6 rounded-full transition-all ${
+                      aiAutoFill ? 'bg-ios-blue' : 'bg-white/20'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        aiAutoFill ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* 已上传的收货单图片 */}
+                {receiptImage && (
+                  <div className="relative group">
+                    <img
+                      src={`data:${receiptImage.mimeType};base64,${receiptImage.thumbnail || receiptImage.data}`}
+                      alt="收货单"
+                      className="w-20 h-20 object-cover rounded-xl border border-white/15"
+                      style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)' }}
+                    />
+                    <button
+                      onClick={onRemoveReceiptImage}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
+                    >
+                      <Icons.X className="w-3.5 h-3.5 text-white" />
+                    </button>
+                  </div>
+                )}
+                {/* 上传按钮 */}
+                {!receiptImage && (
+                  <button
+                    onClick={() => receiptInputRef.current?.click()}
+                    disabled={isAnalyzing}
+                    className="w-20 h-20 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-40"
+                  >
+                    {isAnalyzing ? (
+                      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Icons.Document className="w-6 h-6 text-white/50" />
+                        <span className="text-[10px] text-white/40">收货单</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              <input
+                type="file"
+                ref={receiptInputRef}
+                onChange={onReceiptImageUpload}
+                accept="image/*"
+                className="hidden"
+              />
+            </div>
 
-               {/* 添加图片按钮（支持拍照和相册） */}
-               <button
-                 onClick={() => {
-                   console.log('[图片上传] 点击添加图片按钮');
-                   fileInputRef.current?.click();
-                 }}
-                 disabled={isAnalyzing}
-                 className="w-20 h-20 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-40"
-               >
-                 {isAnalyzing ? (
-                   <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                 ) : (
-                   <>
-                     <Icons.Camera className="w-6 h-6 text-white/50" />
-                     <span className="text-[10px] text-white/40">添加</span>
-                   </>
-                 )}
-               </button>
-             </div>
+            {/* 货物图片 */}
+            <div>
+              <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
+                货物照片
+              </label>
+              <div className="flex items-center gap-3">
+                {/* 已上传的货物图片 */}
+                {goodsImage && (
+                  <div className="relative group">
+                    <img
+                      src={`data:${goodsImage.mimeType};base64,${goodsImage.thumbnail || goodsImage.data}`}
+                      alt="货物"
+                      className="w-20 h-20 object-cover rounded-xl border border-white/15"
+                      style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)' }}
+                    />
+                    <button
+                      onClick={onRemoveGoodsImage}
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
+                    >
+                      <Icons.X className="w-3.5 h-3.5 text-white" />
+                    </button>
+                  </div>
+                )}
+                {/* 上传按钮 */}
+                {!goodsImage && (
+                  <button
+                    onClick={() => goodsInputRef.current?.click()}
+                    disabled={isAnalyzing}
+                    className="w-20 h-20 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-40"
+                  >
+                    {isAnalyzing ? (
+                      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Icons.Camera className="w-6 h-6 text-white/50" />
+                        <span className="text-[10px] text-white/40">货物</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+              <input
+                type="file"
+                ref={goodsInputRef}
+                onChange={onGoodsImageUpload}
+                accept="image/*"
+                className="hidden"
+              />
+            </div>
           </div>
         </GlassCard>
 
@@ -514,15 +615,7 @@ const WorksheetScreen: React.FC<{
 
            {/* Main Row: Voice Button + Text Box (no submit button here) */}
            <div className="flex items-start gap-2">
-             {/* Hidden file input for image upload */}
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={onImageUpload}
-                accept="image/*"
-                multiple
-                className="hidden"
-              />
+             {/* v3.0: file inputs moved to image upload section */}
 
              {/* v1.7: 只保留语音按钮 */}
              <div className="flex items-center">
@@ -830,10 +923,15 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const [step, setStep] = useState<EntryStep>('WELCOME');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('Meat');
   const [supplier, setSupplier] = useState('');
+  const [supplierOther, setSupplierOther] = useState('');  // v3.0: "其他"供应商名称
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<ProcurementItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
+
+  // v3.0: 分类图片状态（替代 attachedImages 数组）
+  const [receiptImage, setReceiptImage] = useState<AttachedImage | null>(null);
+  const [goodsImage, setGoodsImage] = useState<AttachedImage | null>(null);
+  const [aiAutoFill, setAiAutoFill] = useState(false);  // AI 自动填入开关（默认关闭）
 
   // 语音录入状态
   const [voiceStatus, setVoiceStatus] = useState<RecordingStatus>('idle');
@@ -1003,74 +1101,103 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     setItems(items.filter((_, i) => i !== index));
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('[图片上传] 触发上传事件');
+  // v3.0: 收货单图片上传处理
+  const handleReceiptImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[图片上传] 触发收货单上传');
     const files = e.target.files;
-    console.log('[图片上传] 选择的文件:', files?.length || 0, '个');
     if (!files || files.length === 0) return;
 
-    // 先复制文件列表，再重置input（避免某些浏览器清空files）
-    const fileList = Array.from(files);
+    const file = files[0];
     e.target.value = '';
 
-    // 处理每个文件
-    for (const file of fileList) {
-      console.log('[图片上传] 开始处理文件:', file.name, file.type, file.size);
-      // 生成唯一 ID
-      const imageId = crypto.randomUUID();
+    console.log('[图片上传] 收货单文件:', file.name, file.type, file.size);
+    setIsAnalyzing(true);
 
-      setIsAnalyzing(true);
+    try {
+      // 1. 压缩图片
+      const compressed = await compressImage(file);
+      console.log(`[图片压缩] 收货单: ${formatFileSize(compressed.originalSize)} → ${formatFileSize(compressed.compressedSize)}`);
 
-      try {
-        // 1. 压缩图片（识别优先：2560px, 0.85 质量, 1.5MB）
-        console.log('[图片上传] 开始压缩...');
-        const compressed = await compressImage(file);
-        console.log(`[图片压缩] ${file.name}: ${formatFileSize(compressed.originalSize)} → ${formatFileSize(compressed.compressedSize)}`);
+      // 2. 生成缩略图
+      const thumbnail = await generateThumbnail(compressed.data);
 
-        // 2. 生成缩略图
-        console.log('[图片上传] 生成缩略图...');
-        const thumbnail = await generateThumbnail(compressed.data);
-        console.log('[图片上传] 缩略图生成完成');
+      // 3. 创建附件对象
+      const newImage: AttachedImage = {
+        id: crypto.randomUUID(),
+        data: compressed.data,
+        mimeType: compressed.mimeType,
+        thumbnail,
+        recognized: false,
+        originalSize: compressed.originalSize,
+        compressedSize: compressed.compressedSize
+      };
 
-        // 3. 创建附件对象（未识别状态）
-        const newImage: AttachedImage = {
-          id: imageId,
-          data: compressed.data,
-          mimeType: compressed.mimeType,
-          thumbnail,
-          recognized: false,
-          originalSize: compressed.originalSize,
-          compressedSize: compressed.compressedSize
-        };
+      setReceiptImage(newImage);
+      console.log('[图片上传] 收货单图片处理完成!');
 
-        // 4. 立即添加到预览（显示识别中状态）
-        console.log('[图片上传] 添加到预览列表...');
-        setAttachedImages(prev => [...prev, newImage]);
-        console.log('[图片上传] 图片处理完成!');
-
-        // AI 图片识别暂时禁用 - 待后端 API 完成后重新启用
-        // 目前图片仅作为附件保存，不进行识别
-        console.log('[图片上传] AI 识别已禁用，图片仅作为附件保存');
-
-        // 直接标记为已处理（非识别）
-        setAttachedImages(prev =>
-          prev.map(img => img.id === imageId ? { ...img, recognized: true } : img)
-        );
-
-      } catch (error) {
-        console.error('图片处理失败:', error);
-        // 移除失败的图片
-        setAttachedImages(prev => prev.filter(img => img.id !== imageId));
-        alert(`处理图片 ${file.name} 失败，请重试`);
+      // TODO: AI 自动识别（当 aiAutoFill 开启时）
+      if (aiAutoFill) {
+        console.log('[图片上传] AI 自动识别已开启（功能待实现）');
       }
+
+    } catch (error) {
+      console.error('收货单图片处理失败:', error);
+      alert(`处理收货单图片失败，请重试`);
     }
 
     setIsAnalyzing(false);
   };
 
-  // 删除附件图片
-  const removeImage = (id: string) => {
-    setAttachedImages(prev => prev.filter(img => img.id !== id));
+  // v3.0: 货物图片上传处理
+  const handleGoodsImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[图片上传] 触发货物上传');
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    e.target.value = '';
+
+    console.log('[图片上传] 货物文件:', file.name, file.type, file.size);
+    setIsAnalyzing(true);
+
+    try {
+      // 1. 压缩图片
+      const compressed = await compressImage(file);
+      console.log(`[图片压缩] 货物: ${formatFileSize(compressed.originalSize)} → ${formatFileSize(compressed.compressedSize)}`);
+
+      // 2. 生成缩略图
+      const thumbnail = await generateThumbnail(compressed.data);
+
+      // 3. 创建附件对象
+      const newImage: AttachedImage = {
+        id: crypto.randomUUID(),
+        data: compressed.data,
+        mimeType: compressed.mimeType,
+        thumbnail,
+        recognized: false,
+        originalSize: compressed.originalSize,
+        compressedSize: compressed.compressedSize
+      };
+
+      setGoodsImage(newImage);
+      console.log('[图片上传] 货物图片处理完成!');
+
+    } catch (error) {
+      console.error('货物图片处理失败:', error);
+      alert(`处理货物图片失败，请重试`);
+    }
+
+    setIsAnalyzing(false);
+  };
+
+  // v3.0: 删除收货单图片
+  const removeReceiptImage = () => {
+    setReceiptImage(null);
+  };
+
+  // v3.0: 删除货物图片
+  const removeGoodsImage = () => {
+    setGoodsImage(null);
   };
 
   // 语音录入 - 开始录音
@@ -1140,16 +1267,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const handleSummaryConfirm = async () => {
     const validItems = items.filter(i => i.name.trim() !== '');
 
-    // 构建日志数据
+    // v3.0: 构建日志数据（使用新的字段结构）
     const logData: Omit<DailyLog, 'id'> = {
       date: new Date().toISOString(),
       category: selectedCategory,
       supplier: supplier || '未知供应商',
+      supplierOther: supplier === '其他' ? supplierOther : undefined,
       items: validItems,
       totalCost: calculateGrandTotal(),
       notes: notes,
       status: 'Stocked',
-      attachments: attachedImages.length > 0 ? attachedImages : undefined
+      receiptImage: receiptImage || undefined,
+      goodsImage: goodsImage || undefined,
     };
 
     // 清除之前的错误信息
@@ -1222,10 +1351,13 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         <WorksheetScreen
           items={items}
           supplier={supplier}
+          supplierOther={supplierOther}
           notes={notes}
           isAnalyzing={isAnalyzing}
           grandTotal={calculateGrandTotal()}
-          attachedImages={attachedImages}
+          receiptImage={receiptImage}
+          goodsImage={goodsImage}
+          aiAutoFill={aiAutoFill}
           voiceStatus={voiceStatus}
           voiceMessage={voiceMessage}
           transcriptionText={transcriptionText}
@@ -1233,12 +1365,16 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           isSendingTranscription={isSendingTranscription}
           onBack={() => setStep('CATEGORY')}
           onSupplierChange={setSupplier}
+          onSupplierOtherChange={setSupplierOther}
           onNotesChange={setNotes}
           onItemChange={handleItemChange}
           onAddItem={addNewRow}
           onRemoveItem={removeRow}
-          onImageUpload={handleImageUpload}
-          onRemoveImage={removeImage}
+          onReceiptImageUpload={handleReceiptImageUpload}
+          onGoodsImageUpload={handleGoodsImageUpload}
+          onRemoveReceiptImage={removeReceiptImage}
+          onRemoveGoodsImage={removeGoodsImage}
+          onAiAutoFillChange={setAiAutoFill}
           onVoiceStart={handleVoiceStart}
           onVoiceStop={handleVoiceStop}
           onTranscriptionChange={setTranscriptionText}

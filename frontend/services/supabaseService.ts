@@ -1,13 +1,13 @@
 /**
  * Supabase 数据库服务
- * v2.3 - 新增 searchUnits 单位自动完成搜索
+ * v3.0 - 简化表结构：移除 SKU 依赖，支持自由文本单位，图片分类
  *
  * 变更历史：
+ * - v3.0: 简化 ims_material_price 表，移除 SKU，改为直接关联 material
  * - v2.3: 新增 searchUnits 函数用于单位自动完成输入
  * - v2.2: 更新表名映射（ims_product→ims_material, ims_unit_of_measure→ims_ref_unit等）
  * - v2.1: 添加 total_amount 字段支持采购总价
  * - v2.0: 使用 supabaseClient.ts 提供的单例客户端
- * - v1.0: 独立创建 Supabase 客户端
  */
 
 import { supabase } from './supabaseClient';
@@ -58,21 +58,24 @@ export interface UnitOfMeasure {
   dimension?: string;
 }
 
+// v3.0 - 简化的采购价格记录
 export interface StorePurchasePrice {
-  price_id?: number;
-  store_id: string;
-  sku_id: number;
-  supplier_id?: number;
-  price_date: string;
-  purchase_price: number;
-  purchase_unit_id: number;
-  purchase_quantity?: number;
-  total_amount?: number; // v2.1 - 采购总价（实际支付金额）
-  source_type?: string;
-  status?: string;
-  notes?: string;
-  created_by: string;
-  receipt_images?: string[]; // 收货单图片URLs数组
+  id?: number;
+  store_id: string;           // UUID - 门店
+  created_by: string;         // UUID - 录入人
+  material_id?: number;       // 关联 ims_material（可为空）
+  supplier_id?: number;       // 关联 ims_ref_supplier（可为空）
+  item_name: string;          // 原始录入名称
+  quantity: number;           // 数量
+  unit: string;               // 单位（自由文本）
+  unit_price: number;         // 单价
+  total_amount?: number;      // 总金额
+  receipt_image?: string;     // 收货单图片 URL
+  goods_image?: string;       // 货物图片 URL
+  price_date: string;         // 采购日期
+  supplier_name?: string;     // "其他"供应商时的名称
+  notes?: string;             // 备注
+  status?: string;            // pending/approved/rejected
 }
 
 // ============ 供应商 API ============
@@ -249,26 +252,30 @@ export async function matchUnit(unitName: string): Promise<UnitOfMeasure | null>
 }
 
 // ============ 采购价格 API ============
+// v3.0 - 简化版，移除 SKU 依赖
 
 /**
  * 创建采购价格记录
  */
 export async function createPurchasePrice(data: StorePurchasePrice): Promise<StorePurchasePrice> {
-
   const { data: result, error } = await supabase
     .from('ims_material_price')
     .insert({
       store_id: data.store_id,
-      sku_id: data.sku_id,
-      supplier_id: data.supplier_id,
-      price_date: data.price_date,
-      purchase_price: data.purchase_price,
-      purchase_unit_id: data.purchase_unit_id,
-      purchase_quantity: data.purchase_quantity,
-      source_type: data.source_type || 'manual_input',
-      status: data.status || 'pending',
-      notes: data.notes,
       created_by: data.created_by,
+      material_id: data.material_id || null,
+      supplier_id: data.supplier_id || null,
+      item_name: data.item_name,
+      quantity: data.quantity,
+      unit: data.unit,
+      unit_price: data.unit_price,
+      total_amount: data.total_amount,
+      receipt_image: data.receipt_image || null,
+      goods_image: data.goods_image || null,
+      price_date: data.price_date,
+      supplier_name: data.supplier_name || null,
+      notes: data.notes || null,
+      status: data.status || 'pending',
     })
     .select()
     .single();
@@ -285,23 +292,24 @@ export async function createPurchasePrice(data: StorePurchasePrice): Promise<Sto
  * 批量创建采购价格记录
  */
 export async function createPurchasePrices(records: StorePurchasePrice[]): Promise<StorePurchasePrice[]> {
-
   const { data: results, error } = await supabase
     .from('ims_material_price')
     .insert(records.map(r => ({
       store_id: r.store_id,
-      sku_id: r.sku_id,
-      supplier_id: r.supplier_id,
-      price_date: r.price_date,
-      purchase_price: r.purchase_price,
-      purchase_unit_id: r.purchase_unit_id,
-      purchase_quantity: r.purchase_quantity,
-      total_amount: r.total_amount, // v2.1 - 采购总价
-      source_type: r.source_type || 'manual_input',
-      status: r.status || 'pending',
-      notes: r.notes,
       created_by: r.created_by,
-      receipt_images: r.receipt_images || [],
+      material_id: r.material_id || null,
+      supplier_id: r.supplier_id || null,
+      item_name: r.item_name,
+      quantity: r.quantity,
+      unit: r.unit,
+      unit_price: r.unit_price,
+      total_amount: r.total_amount,
+      receipt_image: r.receipt_image || null,
+      goods_image: r.goods_image || null,
+      price_date: r.price_date,
+      supplier_name: r.supplier_name || null,
+      notes: r.notes || null,
+      status: r.status || 'pending',
     })))
     .select();
 

@@ -1,6 +1,10 @@
 /**
- * 图片压缩服务
- * 识别优先策略：保持高清晰度以确保 AI 识别准确率
+ * 图片压缩与上传服务
+ * v2.0 - 支持图片分类上传（receipt/goods）
+ *
+ * 变更历史：
+ * - v2.0: uploadImageToStorage 新增 category 参数支持图片分类
+ * - v1.0: 识别优先策略，保持高清晰度以确保 AI 识别准确率
  */
 
 export interface CompressOptions {
@@ -168,27 +172,29 @@ export const base64ToBlob = (base64Data: string, mimeType: string = 'image/jpeg'
 
 /**
  * 上传图片到 Supabase Storage
- * v1.0 - 上传收货单图片到 ims-receipts bucket
+ * v2.0 - 支持图片分类（receipt/goods）
  *
  * @param base64Data Base64 图片数据（不含前缀）
  * @param mimeType 图片类型
  * @param storeId 门店ID
+ * @param category 图片分类：'receipt' 收货单 | 'goods' 货物
  * @returns 图片的 public URL
  */
 export const uploadImageToStorage = async (
   base64Data: string,
   mimeType: string,
-  storeId: string
+  storeId: string,
+  category: 'receipt' | 'goods' = 'receipt'
 ): Promise<string> => {
   const { supabase } = await import('./supabaseClient');
 
   // 1. Base64 转 Blob
   const blob = base64ToBlob(base64Data, mimeType);
 
-  // 2. 生成文件路径：store_id/日期/时间戳_随机.jpg
+  // 2. 生成文件路径：category/store_id/日期/时间戳_随机.jpg
   const date = new Date().toISOString().split('T')[0];
   const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
-  const path = `${storeId}/${date}/${fileName}`;
+  const path = `${category}/${storeId}/${date}/${fileName}`;
 
   // 3. 上传到 Storage
   const { data, error } = await supabase.storage
@@ -208,6 +214,6 @@ export const uploadImageToStorage = async (
     .from('ims-receipts')
     .getPublicUrl(path);
 
-  console.log(`[图片上传] 成功: ${urlData.publicUrl}`);
+  console.log(`[图片上传] 成功 (${category}): ${urlData.publicUrl}`);
   return urlData.publicUrl;
 };

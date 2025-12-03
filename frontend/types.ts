@@ -22,16 +22,22 @@ export interface AttachedImage {
   compressedSize?: number; // 压缩后大小 (bytes)
 }
 
+// v3.0 - 更新 DailyLog 支持：
+// - receiptImage/goodsImage 分类图片（替代 attachments）
+// - supplierOther "其他"供应商名称
 export interface DailyLog {
   id: string;
   date: string;
   category: CategoryType;
   supplier: string;
+  supplierOther?: string;          // v3.0: "其他"供应商时的名称
   items: ProcurementItem[];
   totalCost: number;
   notes: string;
   status: 'Stocked' | 'Pending' | 'Issue';
-  attachments?: AttachedImage[];  // 凭证图片
+  attachments?: AttachedImage[];   // 兼容旧版
+  receiptImage?: AttachedImage;    // v3.0: 收货单图片
+  goodsImage?: AttachedImage;      // v3.0: 货物图片
 }
 
 export interface ParseResult {

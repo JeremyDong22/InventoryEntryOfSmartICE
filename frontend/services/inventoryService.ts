@@ -1,21 +1,20 @@
 /**
  * 入库数据提交服务
- * 处理采购数据从前端到数据库的完整流程
- * v2.1 - 添加 total_amount 采购总价字段
- * v2.0 - 单位改为直接使用 unitId，不再调用 matchUnit()
- * v1.2 - 添加图片上传到 Supabase Storage
- * v1.1 - 合并 PR #6 完整实现
+ * v3.0 - 简化版：移除 SKU 逻辑，只匹配 material，单位自由文本，图片分类
+ *
+ * 变更历史：
+ * - v3.0: 移除 SKU 匹配，简化提交流程，支持图片分类
+ * - v2.1: 添加 total_amount 采购总价字段
+ * - v2.0: 单位改为直接使用 unitId
  */
 
 import { DailyLog, ProcurementItem } from '../types';
 import {
   matchProduct,
   matchSupplier,
-  getProductSkus,
   createPurchasePrices,
   StorePurchasePrice,
   Product,
-  ProductSku,
 } from './supabaseService';
 import { uploadImageToStorage } from './imageService';
 
@@ -30,97 +29,19 @@ export interface SubmitResult {
 
 export interface PendingMatch {
   itemName: string;
-  matchType: 'product' | 'supplier' | 'unit';
-  candidates: Array<{ id: number; name: string; similarity?: number }>;
-}
-
-interface ItemMatchResult {
-  productId: number | null;
-  skuId: number | null;
-  unitId: number | null;
-  matchStatus: 'matched' | 'product_only' | 'pending' | 'unmatched';
-  rawProductName: string;
-}
-
-// ============ 分类映射 ============
-
-/**
- * 前端分类到后端分类代码映射
- */
-const CATEGORY_MAPPING: Record<string, string> = {
-  'Meat': 'MEAT',
-  'Vegetables': 'VEGETABLE',
-  'Dry Goods': 'DRY_GOODS',
-  'Alcohol': 'BEVERAGE',
-  'Consumables': 'CONSUMABLE',
-  'Other': 'OTHER',
-};
-
-// ============ 匹配函数 ============
-
-/**
- * 匹配单个物品（产品 + SKU + 单位）
- * v2.0 - 单位改为直接使用 item.unitId，不再调用 matchUnit()
- */
-async function matchItem(item: ProcurementItem): Promise<ItemMatchResult> {
-  const result: ItemMatchResult = {
-    productId: null,
-    skuId: null,
-    unitId: null,
-    matchStatus: 'unmatched',
-    rawProductName: item.name,
-  };
-
-  // 1. 匹配产品
-  const products = await matchProduct(item.name);
-
-  if (products.length === 0) {
-    console.log(`[匹配] 产品未找到: ${item.name}`);
-    return result;
-  }
-
-  // 取第一个匹配结果（最相关）
-  const matchedProduct: Product = products[0];
-  result.productId = matchedProduct.product_id;
-  result.matchStatus = 'product_only';
-
-  console.log(`[匹配] 产品匹配: ${item.name} -> ${matchedProduct.product_name} (ID: ${matchedProduct.product_id})`);
-
-  // 2. 获取产品的 SKU
-  try {
-    const skus = await getProductSkus(matchedProduct.product_id);
-    if (skus.length > 0) {
-      // 优先选择默认 SKU，否则取第一个
-      const defaultSku = skus.find(s => s.is_default) || skus[0];
-      result.skuId = defaultSku.sku_id;
-      result.matchStatus = 'matched';
-      console.log(`[匹配] SKU 匹配: ${defaultSku.sku_name} (ID: ${defaultSku.sku_id})`);
-    } else {
-      console.log(`[匹配] 产品无 SKU: ${matchedProduct.product_name}`);
-    }
-  } catch (err) {
-    console.warn(`[匹配] 获取 SKU 失败:`, err);
-  }
-
-  // 3. v2.0: 直接使用前端选择的 unitId，不再模糊匹配
-  if (item.unitId) {
-    result.unitId = item.unitId;
-    console.log(`[匹配] 单位使用: ${item.unit} (ID: ${item.unitId})`);
-  } else {
-    console.log(`[匹配] 单位未选择: ${item.unit || '空'}`);
-  }
-
-  return result;
+  matchType: 'product' | 'supplier';
+  rawValue: string;
 }
 
 // ============ 主提交函数 ============
 
 /**
  * 提交采购数据到数据库
+ * v3.0 - 简化版，移除 SKU 逻辑
  *
  * @param dailyLog - 前端录入的日志数据
- * @param storeId - UserCenter 门店 UUID
- * @param employeeId - UserCenter 员工 UUID
+ * @param storeId - 门店 UUID
+ * @param employeeId - 员工 UUID
  * @returns 提交结果
  */
 export async function submitProcurement(
@@ -156,116 +77,115 @@ export async function submitProcurement(
   console.log(`[提交] 开始处理 ${validItems.length} 条采购记录`);
   console.log(`[提交] 门店: ${storeId}, 员工: ${employeeId}`);
 
-  // 上传图片到 Supabase Storage
-  let imageUrls: string[] = [];
-  if (dailyLog.attachments && dailyLog.attachments.length > 0) {
-    console.log(`[提交] 开始上传 ${dailyLog.attachments.length} 张图片`);
+  // 上传图片
+  let receiptImageUrl: string | undefined;
+  let goodsImageUrl: string | undefined;
+
+  if (dailyLog.receiptImage) {
     try {
-      imageUrls = await Promise.all(
-        dailyLog.attachments.map(async (attachment) => {
-          return await uploadImageToStorage(
-            attachment.data,
-            attachment.mimeType,
-            storeId
-          );
-        })
+      console.log('[提交] 上传收货单图片...');
+      receiptImageUrl = await uploadImageToStorage(
+        dailyLog.receiptImage.data,
+        dailyLog.receiptImage.mimeType,
+        storeId,
+        'receipt'
       );
-      console.log(`[提交] 图片上传成功: ${imageUrls.length} 张`);
+      console.log('[提交] 收货单图片上传成功');
     } catch (err) {
-      console.error('[提交] 图片上传失败:', err);
-      result.errors.push(`图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
-      // 图片上传失败不影响数据提交，继续处理
+      console.error('[提交] 收货单图片上传失败:', err);
+      result.errors.push(`收货单图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
+    }
+  }
+
+  if (dailyLog.goodsImage) {
+    try {
+      console.log('[提交] 上传货物图片...');
+      goodsImageUrl = await uploadImageToStorage(
+        dailyLog.goodsImage.data,
+        dailyLog.goodsImage.mimeType,
+        storeId,
+        'goods'
+      );
+      console.log('[提交] 货物图片上传成功');
+    } catch (err) {
+      console.error('[提交] 货物图片上传失败:', err);
+      result.errors.push(`货物图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
     }
   }
 
   // 匹配供应商
   let supplierId: number | null = null;
-  if (dailyLog.supplier) {
+  let supplierName: string | undefined;
+
+  if (dailyLog.supplier && dailyLog.supplier !== '其他') {
     const supplier = await matchSupplier(dailyLog.supplier);
     if (supplier) {
-      supplierId = supplier.supplier_id;
-      console.log(`[提交] 供应商匹配: ${dailyLog.supplier} -> ${supplier.supplier_name} (ID: ${supplier.supplier_id})`);
+      supplierId = supplier.id;
+      console.log(`[提交] 供应商匹配: ${dailyLog.supplier} -> ID: ${supplier.id}`);
     } else {
-      console.log(`[提交] 供应商未找到: ${dailyLog.supplier}`);
+      console.log(`[提交] 供应商未匹配: ${dailyLog.supplier}`);
       result.pendingMatches.push({
         itemName: dailyLog.supplier,
         matchType: 'supplier',
-        candidates: [],
+        rawValue: dailyLog.supplier,
       });
+      // 保存原始名称
+      supplierName = dailyLog.supplier;
     }
+  } else if (dailyLog.supplierOther) {
+    // "其他"供应商
+    supplierName = dailyLog.supplierOther;
+    console.log(`[提交] 其他供应商: ${supplierName}`);
   }
 
-  // 匹配每个物品并构建记录
+  // 构建记录
   const records: StorePurchasePrice[] = [];
   const priceDate = new Date(dailyLog.date).toISOString().split('T')[0];
 
   for (const item of validItems) {
-    const matchResult = await matchItem(item);
-
-    // 如果没有匹配到产品，记录待处理
-    if (matchResult.matchStatus === 'unmatched') {
-      result.pendingMatches.push({
-        itemName: item.name,
-        matchType: 'product',
-        candidates: [],
-      });
-      console.log(`[提交] 产品未找到，跳过: ${item.name}`);
+    // 验证必填字段
+    if (!item.unit || item.unit.trim() === '') {
+      result.errors.push(`物品 "${item.name}" 缺少单位`);
       continue;
     }
 
-    // 如果产品存在但没有 SKU，记录待处理
-    if (matchResult.matchStatus === 'product_only' || !matchResult.skuId) {
-      result.pendingMatches.push({
-        itemName: `${item.name} (产品ID: ${matchResult.productId})`,
-        matchType: 'product',
-        candidates: [{
-          id: matchResult.productId || 0,
-          name: `产品存在但缺少 SKU 配置`
-        }],
-      });
-      console.log(`[提交] 产品无SKU，跳过: ${item.name} (产品ID: ${matchResult.productId})`);
-      continue;
-    }
-
-    // 如果没有匹配到单位，记录待处理
-    if (!matchResult.unitId) {
-      result.pendingMatches.push({
-        itemName: item.unit || '未知单位',
-        matchType: 'unit',
-        candidates: [],
-      });
-      // 继续处理，使用默认单位 ID
-    }
-
-    // 验证价格必须大于 0
     if (!item.unitPrice || item.unitPrice <= 0) {
-      result.pendingMatches.push({
-        itemName: item.name,
-        matchType: 'product',
-        candidates: [{
-          id: matchResult.productId || 0,
-          name: `价格无效: ${item.unitPrice || 0}`,
-        }],
-      });
-      console.log(`[提交] 价格无效，跳过: ${item.name} (价格: ${item.unitPrice})`);
+      result.errors.push(`物品 "${item.name}" 价格无效`);
       continue;
     }
 
-    // 构建采购价格记录（走到这里说明已有 SKU）
+    // 尝试匹配产品（可选）
+    let materialId: number | undefined;
+    const products = await matchProduct(item.name);
+    if (products.length > 0) {
+      materialId = products[0].id;
+      console.log(`[提交] 产品匹配: ${item.name} -> ${products[0].name} (ID: ${materialId})`);
+    } else {
+      console.log(`[提交] 产品未匹配: ${item.name}（将保存原始名称）`);
+      result.pendingMatches.push({
+        itemName: item.name,
+        matchType: 'product',
+        rawValue: item.name,
+      });
+    }
+
+    // 构建记录
     const record: StorePurchasePrice = {
-      store_id: storeId, // 直接使用 UUID，数据库已支持
-      sku_id: matchResult.skuId,
+      store_id: storeId,
+      created_by: employeeId,
+      material_id: materialId,
       supplier_id: supplierId || undefined,
+      item_name: item.name,
+      quantity: item.quantity || 1,
+      unit: item.unit,
+      unit_price: item.unitPrice,
+      total_amount: item.total || (item.quantity * item.unitPrice),
+      receipt_image: receiptImageUrl,
+      goods_image: goodsImageUrl,
       price_date: priceDate,
-      purchase_price: item.unitPrice,
-      purchase_unit_id: matchResult.unitId || 1, // 默认单位 ID
-      purchase_quantity: item.quantity || 1,
-      total_amount: item.total || (item.quantity * item.unitPrice), // v2.1 - 采购总价
-      source_type: 'manual_input', // 必须是允许的值之一
+      supplier_name: supplierName,
+      notes: item.specification || undefined,
       status: 'pending',
-      notes: `${item.name}${item.specification ? ` - ${item.specification}` : ''} | 原始供应商: ${dailyLog.supplier}`,
-      created_by: employeeId, // 直接使用 UUID，数据库已支持
-      receipt_images: imageUrls.length > 0 ? imageUrls : undefined, // 添加图片URLs
     };
 
     records.push(record);
@@ -278,39 +198,21 @@ export async function submitProcurement(
       const inserted = await createPurchasePrices(records);
       result.insertedCount = inserted.length;
 
-      // 只有实际插入了数据才算成功
       if (inserted.length > 0) {
         result.success = true;
         console.log(`[提交] 成功插入 ${inserted.length} 条记录`);
       } else {
-        result.success = false;
         result.errors.push('数据插入失败：未返回任何记录');
-        console.error('[提交] 插入失败：数据库未返回记录');
       }
     } catch (err) {
       console.error('[提交] 批量插入失败:', err);
       result.errors.push(`数据库写入失败: ${err instanceof Error ? err.message : '未知错误'}`);
     }
   } else {
-    // 没有可插入的记录
-    if (result.pendingMatches.length > 0) {
-      // 如果有待处理项，说明需要人工介入
-      result.success = false;
-      const skippedItems = validItems.length - records.length;
-      result.errors.push(
-        `${skippedItems} 条记录因缺少 SKU 数据而跳过。` +
-        `可能原因：产品存在但未配置 SKU，需要先在数据库中添加 product_sku 记录。`
-      );
-      console.log(`[提交] 跳过了 ${skippedItems} 条记录（产品无 SKU）`);
-    } else {
-      // 没有待处理项也没有可插入的记录（不太可能发生）
-      result.success = false;
-      result.errors.push('没有可处理的有效记录');
-    }
+    result.errors.push('没有可提交的有效记录');
   }
 
-  // 总结
-  console.log(`[提交] 完成: 成功=${result.success}, 插入=${result.insertedCount}, 待处理=${result.pendingMatches.length}, 错误=${result.errors.length}`);
+  console.log(`[提交] 完成: 成功=${result.success}, 插入=${result.insertedCount}, 待匹配=${result.pendingMatches.length}, 错误=${result.errors.length}`);
 
   return result;
 }
@@ -330,14 +232,12 @@ export function formatSubmitResult(result: SubmitResult): string {
   if (result.pendingMatches.length > 0) {
     const productPending = result.pendingMatches.filter(p => p.matchType === 'product').length;
     const supplierPending = result.pendingMatches.filter(p => p.matchType === 'supplier').length;
-    const unitPending = result.pendingMatches.filter(p => p.matchType === 'unit').length;
 
     const pendingParts: string[] = [];
     if (productPending > 0) pendingParts.push(`${productPending} 个产品`);
     if (supplierPending > 0) pendingParts.push(`${supplierPending} 个供应商`);
-    if (unitPending > 0) pendingParts.push(`${unitPending} 个单位`);
 
-    message += `\n${pendingParts.join('、')} 待人工确认`;
+    message += `（${pendingParts.join('、')} 待确认）`;
   }
 
   return message;

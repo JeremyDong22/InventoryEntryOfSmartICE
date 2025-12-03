@@ -1,6 +1,10 @@
 /**
  * 自动完成输入框组件
- * 支持汉字 + 拼音首字母搜索，毛玻璃风格下拉列表
+ * v2.0 - 支持 extraOptions（静态选项，如"其他"）
+ *
+ * 变更历史：
+ * - v2.0: 新增 extraOptions 支持静态选项
+ * - v1.0: 支持汉字 + 拼音首字母搜索，毛玻璃风格下拉列表
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -46,6 +50,8 @@ export interface AutocompleteInputProps {
   disabled?: boolean;
   /** 错误信息 */
   error?: string;
+  /** v2.0: 额外的静态选项（如"其他"），始终显示在搜索结果末尾 */
+  extraOptions?: AutocompleteOption[];
 }
 
 export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
@@ -62,6 +68,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   inputClassName,
   disabled = false,
   error,
+  extraOptions = [],
 }) => {
   // 内部状态
   const [isOpen, setIsOpen] = useState(false);
@@ -97,8 +104,10 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         setIsLoading(true);
         try {
           const results = await searchFn(newValue);
-          setOptions(results);
-          setIsOpen(results.length > 0);
+          // v2.0: 将搜索结果和 extraOptions 合并
+          const combinedOptions = [...results, ...extraOptions];
+          setOptions(combinedOptions);
+          setIsOpen(combinedOptions.length > 0);
           setHighlightedIndex(-1);
         } catch (error) {
           console.error('搜索失败:', error);
@@ -108,7 +117,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         }
       }, debounceMs);
     },
-    [onChange, searchFn, debounceMs, minChars]
+    [onChange, searchFn, debounceMs, minChars, extraOptions]
   );
 
   // 选择选项
