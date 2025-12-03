@@ -1,8 +1,9 @@
 /**
  * 入库数据提交服务
- * v3.2 - 添加进度回调，优化 UI 反馈
+ * v3.3 - 支持多张收货单图片上传
  *
  * 变更历史：
+ * - v3.3: receiptImages 改为数组，支持多张收货单上传
  * - v3.2: 添加 onProgress 回调函数，支持进度 UI 显示
  * - v3.1: 图片上传失败时立即返回错误，不继续插入数据
  * - v3.0: 移除 SKU 匹配，简化提交流程，支持图片分类
@@ -92,22 +93,28 @@ export async function submitProcurement(
   console.log(`[提交] 门店: ${storeId}, 员工: ${employeeId}`);
 
   // 上传图片
-  let receiptImageUrl: string | undefined;
+  // v3.3: receiptImages 改为数组，支持多张收货单
+  let receiptImageUrls: string[] = [];
   let goodsImageUrl: string | undefined;
 
   // v3.1: 图片上传失败时立即返回错误，不继续插入数据
   // v3.2: 通过 onProgress 回调报告进度
-  if (dailyLog.receiptImage) {
+  // v3.3: 循环上传多张收货单图片
+  if (dailyLog.receiptImages && dailyLog.receiptImages.length > 0) {
     try {
       onProgress?.('uploading_receipt');
-      console.log('[提交] 上传收货单图片...');
-      receiptImageUrl = await uploadImageToStorage(
-        dailyLog.receiptImage.data,
-        dailyLog.receiptImage.mimeType,
-        storeId,
-        'receipt'
-      );
-      console.log('[提交] 收货单图片上传成功');
+      console.log(`[提交] 上传 ${dailyLog.receiptImages.length} 张收货单图片...`);
+      for (let i = 0; i < dailyLog.receiptImages.length; i++) {
+        const img = dailyLog.receiptImages[i];
+        const url = await uploadImageToStorage(
+          img.data,
+          img.mimeType,
+          storeId,
+          'receipt'
+        );
+        receiptImageUrls.push(url);
+        console.log(`[提交] 收货单图片 ${i + 1}/${dailyLog.receiptImages.length} 上传成功`);
+      }
     } catch (err) {
       console.error('[提交] 收货单图片上传失败:', err);
       result.errors.push(`收货单图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
@@ -200,7 +207,8 @@ export async function submitProcurement(
       unit: item.unit,
       unit_price: item.unitPrice,
       total_amount: item.total || (item.quantity * item.unitPrice),
-      receipt_image: receiptImageUrl,
+      // v3.3: 多张收货单图片存为 JSON 数组
+      receipt_image: receiptImageUrls.length > 0 ? JSON.stringify(receiptImageUrls) : undefined,
       goods_image: goodsImageUrl,
       price_date: priceDate,
       supplier_name: supplierName,

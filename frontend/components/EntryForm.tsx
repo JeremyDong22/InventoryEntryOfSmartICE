@@ -223,10 +223,9 @@ const CategoryScreen: React.FC<{ onSelect: (cat: CategoryType) => void; onBack: 
 
 // --- Worksheet Screen ---
 
+// v3.5 - receiptImages 改为数组，支持多张收货单，AI识别按钮移至图片下方
 // v3.4 - 修改 props：移除 aiAutoFill 开关，改为 isRecognizing + onAIRecognize 按钮
-// v3.0 - 新增 props：
-// - supplierOther + onSupplierOtherChange: "其他"供应商名称
-// - receiptImage + goodsImage: 分类图片
+// v3.0 - 新增 supplierOther + onSupplierOtherChange，receiptImage + goodsImage
 const WorksheetScreen: React.FC<{
   items: ProcurementItem[];
   supplier: string;
@@ -235,7 +234,7 @@ const WorksheetScreen: React.FC<{
   isAnalyzing: boolean;
   isRecognizing: boolean;  // v3.4: AI识别中状态
   grandTotal: number;
-  receiptImage: AttachedImage | null;
+  receiptImages: AttachedImage[];  // v3.5: 多张收货单
   goodsImage: AttachedImage | null;
   voiceStatus: RecordingStatus;
   voiceMessage: string;
@@ -251,7 +250,7 @@ const WorksheetScreen: React.FC<{
   onRemoveItem: (index: number) => void;
   onReceiptImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onGoodsImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onRemoveReceiptImage: () => void;
+  onRemoveReceiptImage: (index: number) => void;  // v3.5: 删除指定索引的收货单
   onRemoveGoodsImage: () => void;
   onAIRecognize: () => void;  // v3.4: AI识别按钮点击
   onVoiceStart: () => void;
@@ -260,7 +259,7 @@ const WorksheetScreen: React.FC<{
   onSendTranscription: () => void;
   onReview: () => void;
 }> = ({
-  items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImage, goodsImage,
+  items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImages, goodsImage,
   voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription,
   onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onAddItem, onRemoveItem,
   onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAIRecognize,
@@ -355,88 +354,90 @@ const WorksheetScreen: React.FC<{
              />
           </div>
 
-          {/* v3.4: 图片上传区 - 收货单 + AI识别按钮 */}
+          {/* v3.5: 图片上传区 - 收货单支持多张，AI识别按钮移至下方 */}
           <div className="space-y-3">
-            {/* 收货单图片 + AI识别按钮 */}
+            {/* 收货单图片（多张） */}
             <div>
               <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
                 收货单照片
               </label>
-              <div className="flex items-center gap-3">
-                {/* 已上传的收货单图片 */}
-                {receiptImage && (
-                  <div className="relative group">
+              {/* 图片行：已上传的图片 + 添加按钮 */}
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                {/* 已上传的收货单图片列表 */}
+                {receiptImages.map((img, index) => (
+                  <div key={img.id} className="relative group">
                     <img
-                      src={`data:${receiptImage.mimeType};base64,${receiptImage.thumbnail || receiptImage.data}`}
-                      alt="收货单"
-                      className={`w-20 h-20 object-cover rounded-xl border transition-all ${
-                        receiptImage.recognized ? 'border-ios-green/50' : 'border-white/15'
+                      src={`data:${img.mimeType};base64,${img.thumbnail || img.data}`}
+                      alt={`收货单 ${index + 1}`}
+                      className={`w-16 h-16 object-cover rounded-lg border transition-all ${
+                        img.recognized ? 'border-ios-green/50' : 'border-white/15'
                       }`}
                       style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)' }}
                     />
                     {/* 已识别标记 */}
-                    {receiptImage.recognized && (
-                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-ios-green rounded-full flex items-center justify-center border-2 border-[#1a1a1f]">
-                        <Icons.Check className="w-3 h-3 text-white" />
+                    {img.recognized && (
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-ios-green rounded-full flex items-center justify-center border border-[#1a1a1f]">
+                        <Icons.Check className="w-2.5 h-2.5 text-white" />
                       </div>
                     )}
+                    {/* 删除按钮 */}
                     <button
-                      onClick={onRemoveReceiptImage}
-                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
+                      onClick={() => onRemoveReceiptImage(index)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border border-[#1a1a1f]"
                     >
-                      <Icons.X className="w-3.5 h-3.5 text-white" />
+                      <Icons.X className="w-3 h-3 text-white" />
                     </button>
                   </div>
-                )}
-                {/* 上传按钮 - 无图片时显示 */}
-                {!receiptImage && (
-                  <button
-                    onClick={() => receiptInputRef.current?.click()}
-                    disabled={isAnalyzing}
-                    className="w-20 h-20 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-40"
-                  >
-                    {isAnalyzing ? (
-                      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Icons.Document className="w-6 h-6 text-white/50" />
-                        <span className="text-[10px] text-white/40">收货单</span>
-                      </>
-                    )}
-                  </button>
-                )}
-                {/* v3.4: AI识别按钮 - 有图片且未识别时显示 */}
-                {receiptImage && !receiptImage.recognized && (
-                  <button
-                    onClick={onAIRecognize}
-                    disabled={isRecognizing}
-                    className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60 border border-ios-blue/30 hover:border-ios-blue/50"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(91,163,192,0.2) 0%, rgba(91,163,192,0.1) 100%)',
-                      boxShadow: '0 2px 12px rgba(91,163,192,0.15)'
-                    }}
-                  >
-                    {isRecognizing ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
-                        <span className="text-sm text-ios-blue font-medium">识别中...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Icons.Sparkles className="w-4 h-4 text-ios-blue" />
-                        <span className="text-sm text-ios-blue font-medium">AI识别</span>
-                      </>
-                    )}
-                  </button>
-                )}
-                {/* 已识别提示 */}
-                {receiptImage && receiptImage.recognized && (
-                  <span className="text-xs text-ios-green flex items-center gap-1">
-                    <Icons.Check className="w-3 h-3" />
-                    已识别
-                  </span>
-                )}
+                ))}
+                {/* 添加更多按钮 */}
+                <button
+                  onClick={() => receiptInputRef.current?.click()}
+                  disabled={isAnalyzing}
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 disabled:opacity-40"
+                >
+                  {isAnalyzing ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Icons.Plus className="w-5 h-5 text-white/50" />
+                      <span className="text-[9px] text-white/40">添加</span>
+                    </>
+                  )}
+                </button>
               </div>
+              {/* v3.5: AI识别按钮 - 有未识别图片时显示，独立一行 */}
+              {receiptImages.length > 0 && receiptImages.some(img => !img.recognized) && (
+                <button
+                  onClick={onAIRecognize}
+                  disabled={isRecognizing}
+                  className="w-full h-10 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-60 border border-ios-blue/30 hover:border-ios-blue/50"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(91,163,192,0.15) 0%, rgba(91,163,192,0.08) 100%)',
+                    boxShadow: '0 2px 12px rgba(91,163,192,0.1)'
+                  }}
+                >
+                  {isRecognizing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
+                      <span className="text-sm text-ios-blue font-medium">识别中...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icons.Sparkles className="w-4 h-4 text-ios-blue" />
+                      <span className="text-sm text-ios-blue font-medium">
+                        AI识别 {receiptImages.length > 1 ? `(${receiptImages.filter(img => !img.recognized).length}张)` : ''}
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
+              {/* 全部已识别提示 */}
+              {receiptImages.length > 0 && receiptImages.every(img => img.recognized) && (
+                <div className="flex items-center gap-1.5 text-xs text-ios-green">
+                  <Icons.Check className="w-3.5 h-3.5" />
+                  <span>已识别 {receiptImages.length} 张收货单</span>
+                </div>
+              )}
               <input
                 type="file"
                 ref={receiptInputRef}
@@ -986,10 +987,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const [items, setItems] = useState<ProcurementItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // v3.4: 分类图片状态 + AI识别状态（移除 aiAutoFill 开关）
-  const [receiptImage, setReceiptImage] = useState<AttachedImage | null>(null);
+  // v3.5: 收货单改为数组支持多张，AI识别支持批量
+  const [receiptImages, setReceiptImages] = useState<AttachedImage[]>([]);
   const [goodsImage, setGoodsImage] = useState<AttachedImage | null>(null);
-  const [isRecognizing, setIsRecognizing] = useState(false);  // v3.4: AI识别中状态
+  const [isRecognizing, setIsRecognizing] = useState(false);
 
   // 语音录入状态
   const [voiceStatus, setVoiceStatus] = useState<RecordingStatus>('idle');
@@ -1207,7 +1208,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     setItems(items.filter((_, i) => i !== index));
   };
 
-  // v3.4: 收货单图片上传处理（仅上传，不自动识别）
+  // v3.5: 收货单图片上传处理（支持多张，追加到数组）
   const handleReceiptImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('[图片上传] 触发收货单上传');
     const files = e.target.files;
@@ -1227,7 +1228,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
       // 2. 生成缩略图
       const thumbnail = await generateThumbnail(compressed.data);
 
-      // 3. 创建附件对象（v3.4: 不自动识别，等用户点击"AI识别"按钮）
+      // 3. 创建附件对象
       const newImage: AttachedImage = {
         id: crypto.randomUUID(),
         data: compressed.data,
@@ -1238,8 +1239,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         compressedSize: compressed.compressedSize
       };
 
-      setReceiptImage(newImage);
-      console.log('[图片上传] 收货单图片处理完成，等待用户点击"AI识别"');
+      // v3.5: 追加到数组而非替换
+      setReceiptImages(prev => [...prev, newImage]);
+      console.log('[图片上传] 收货单图片添加成功，等待用户点击"AI识别"');
 
     } catch (error) {
       console.error('收货单图片处理失败:', error);
@@ -1249,24 +1251,44 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     setIsAnalyzing(false);
   };
 
-  // v3.4: AI识别按钮点击处理
-  const handleAIRecognize = async () => {
-    if (!receiptImage || isRecognizing) return;
+  // v3.5: 删除指定索引的收货单图片
+  const handleRemoveReceiptImage = (index: number) => {
+    setReceiptImages(prev => prev.filter((_, i) => i !== index));
+  };
 
-    console.log('[AI识别] 开始识别收货单...');
+  // v3.5: AI识别按钮点击处理（支持多张图片批量识别）
+  const handleAIRecognize = async () => {
+    // 找出未识别的图片
+    const unrecognizedImages = receiptImages.filter(img => !img.recognized);
+    if (unrecognizedImages.length === 0 || isRecognizing) return;
+
+    console.log(`[AI识别] 开始识别 ${unrecognizedImages.length} 张收货单...`);
     setIsRecognizing(true);
 
     try {
-      const result = await recognizeReceipt(receiptImage.data, receiptImage.mimeType);
-      if (result) {
-        console.log('[AI识别] 识别成功:', result);
-        // 使用与语音录入相同的表单填充逻辑
-        fillFormWithResult(result);
-        // 标记图片已识别
-        setReceiptImage(prev => prev ? { ...prev, recognized: true } : null);
-      } else {
-        console.warn('[AI识别] 识别失败，未返回结果');
-        alert('收货单识别失败，请手动输入或重试');
+      // 逐张识别并合并结果
+      for (let i = 0; i < unrecognizedImages.length; i++) {
+        const img = unrecognizedImages[i];
+        console.log(`[AI识别] 识别第 ${i + 1}/${unrecognizedImages.length} 张...`);
+
+        const result = await recognizeReceipt(img.data, img.mimeType);
+        if (result) {
+          console.log(`[AI识别] 第 ${i + 1} 张识别成功:`, result);
+          // 使用与语音录入相同的表单填充逻辑（追加模式）
+          fillFormWithResult(result);
+          // 标记该图片已识别
+          setReceiptImages(prev =>
+            prev.map(item => item.id === img.id ? { ...item, recognized: true } : item)
+          );
+        } else {
+          console.warn(`[AI识别] 第 ${i + 1} 张识别失败`);
+        }
+      }
+
+      // 检查是否有失败的
+      const stillUnrecognized = receiptImages.filter(img => !img.recognized).length;
+      if (stillUnrecognized > 0) {
+        alert(`${unrecognizedImages.length - stillUnrecognized} 张识别成功，${stillUnrecognized} 张失败`);
       }
     } catch (recognitionError) {
       console.error('[AI识别] 识别出错:', recognitionError);
@@ -1320,7 +1342,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
 
   // v3.0: 删除收货单图片
   const removeReceiptImage = () => {
-    setReceiptImage(null);
+    setReceiptImages([]);
   };
 
   // v3.0: 删除货物图片
@@ -1405,7 +1427,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
       totalCost: calculateGrandTotal(),
       notes: notes,
       status: 'Stocked',
-      receiptImage: receiptImage || undefined,
+      receiptImages: receiptImages.length > 0 ? receiptImages : undefined,
       goodsImage: goodsImage || undefined,
     };
 
@@ -1474,7 +1496,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
               setSupplier('');
               setSupplierOther('');
               setNotes('');
-              setReceiptImage(null);
+              setReceiptImages([]);
               setGoodsImage(null);
               setStep('CATEGORY'); // 返回分类选择页，方便继续录入
               return 0;
@@ -1524,7 +1546,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           isAnalyzing={isAnalyzing}
           isRecognizing={isRecognizing}
           grandTotal={calculateGrandTotal()}
-          receiptImage={receiptImage}
+          receiptImages={receiptImages}
           goodsImage={goodsImage}
           voiceStatus={voiceStatus}
           voiceMessage={voiceMessage}
@@ -1540,7 +1562,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           onRemoveItem={removeRow}
           onReceiptImageUpload={handleReceiptImageUpload}
           onGoodsImageUpload={handleGoodsImageUpload}
-          onRemoveReceiptImage={removeReceiptImage}
+          onRemoveReceiptImage={handleRemoveReceiptImage}
           onRemoveGoodsImage={removeGoodsImage}
           onAIRecognize={handleAIRecognize}
           onVoiceStart={handleVoiceStart}

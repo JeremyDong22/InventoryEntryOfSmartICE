@@ -22,9 +22,8 @@ export interface AttachedImage {
   compressedSize?: number; // 压缩后大小 (bytes)
 }
 
-// v3.0 - 更新 DailyLog 支持：
-// - receiptImage/goodsImage 分类图片（替代 attachments）
-// - supplierOther "其他"供应商名称
+// v3.5 - 更新 DailyLog：receiptImages 改为数组支持多张收货单
+// v3.0 - 新增 receiptImage/goodsImage 分类图片，supplierOther "其他"供应商名称
 export interface DailyLog {
   id: string;
   date: string;
@@ -36,7 +35,7 @@ export interface DailyLog {
   notes: string;
   status: 'Stocked' | 'Pending' | 'Issue';
   attachments?: AttachedImage[];   // 兼容旧版
-  receiptImage?: AttachedImage;    // v3.0: 收货单图片
+  receiptImages?: AttachedImage[]; // v3.5: 收货单图片（多张）
   goodsImage?: AttachedImage;      // v3.0: 货物图片
 }
 
