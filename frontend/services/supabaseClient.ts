@@ -1,8 +1,9 @@
 /**
  * Supabase 客户端 - 数据库访问
- * v3.0 - 移除 Auth 配置，仅用于数据库访问
+ * v3.1 - 修复全局 Content-Type 覆盖 Storage 上传问题
  *
  * 变更历史：
+ * - v3.1: 移除全局 Content-Type header，避免覆盖 Storage 上传的 MIME 类型
  * - v3.0: 移除 Auth 配置，简化为仅数据库访问
  * - v2.0: 添加 Auth 配置，启用会话持久化
  * - v1.0: 初始版本（仅数据库访问）
@@ -33,7 +34,7 @@ export function getSupabaseClient(): SupabaseClient {
       },
       global: {
         headers: {
-          'Content-Type': 'application/json',
+          // 注意：不要设置全局 Content-Type，会覆盖 Storage 上传的 MIME 类型
           'Accept': 'application/json',
           'Accept-Profile': 'public', // 指定 schema
           'Prefer': 'return=representation', // 要求返回完整数据

@@ -1293,8 +1293,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         const result = await submitProcurement(logData, storeId, employeeId);
 
         // 检查是否提交成功
-        if (!result.success && result.errors.length > 0) {
-          // 提交失败：显示错误，保留在当前页面
+        if (!result.success) {
+          // 提交完全失败：显示错误，保留在当前页面
           console.error('[EntryForm] 数据库提交失败:', result.errors);
           setSubmitError(result.errors.join('\n'));
           setIsSubmitting(false);
@@ -1302,14 +1302,23 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           return; // 不继续执行后续操作
         }
 
-        // 提交成功：显示成功消息
-        const message = formatSubmitResult(result);
+        // 提交成功：显示结果消息
+        let message = formatSubmitResult(result);
+
+        // v3.1: 如果有警告（如图片上传失败），显示警告信息
+        if (result.errors.length > 0) {
+          console.warn('[EntryForm] 提交成功但有警告:', result.errors);
+          message += '\n⚠️ 警告: ' + result.errors.join(', ');
+        }
+
         setSubmitMessage(message);
 
         // 保存到本地（仅在提交成功后）
         onSave(logData);
 
-        // 显示结果 2 秒后清除状态并返回分类选择页
+        // 显示结果后清除状态并返回分类选择页
+        // 如果有警告，延长显示时间到 4 秒
+        const delay = result.errors.length > 0 ? 4000 : 2000;
         setTimeout(() => {
           setSubmitMessage('');
           setIsSubmitting(false);
@@ -1321,7 +1330,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           setReceiptImage(null);
           setGoodsImage(null);
           setStep('CATEGORY'); // 返回分类选择页，方便继续录入
-        }, 2000);
+        }, delay);
 
       } catch (err) {
         // 捕获异常：显示错误，保留在当前页面

@@ -1,8 +1,9 @@
 /**
  * 入库数据提交服务
- * v3.0 - 简化版：移除 SKU 逻辑，只匹配 material，单位自由文本，图片分类
+ * v3.1 - 图片上传失败时阻止提交
  *
  * 变更历史：
+ * - v3.1: 图片上传失败时立即返回错误，不继续插入数据
  * - v3.0: 移除 SKU 匹配，简化提交流程，支持图片分类
  * - v2.1: 添加 total_amount 采购总价字段
  * - v2.0: 单位改为直接使用 unitId
@@ -81,6 +82,7 @@ export async function submitProcurement(
   let receiptImageUrl: string | undefined;
   let goodsImageUrl: string | undefined;
 
+  // v3.1: 图片上传失败时立即返回错误，不继续插入数据
   if (dailyLog.receiptImage) {
     try {
       console.log('[提交] 上传收货单图片...');
@@ -94,6 +96,7 @@ export async function submitProcurement(
     } catch (err) {
       console.error('[提交] 收货单图片上传失败:', err);
       result.errors.push(`收货单图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      return result; // 立即返回，不继续提交
     }
   }
 
@@ -110,6 +113,7 @@ export async function submitProcurement(
     } catch (err) {
       console.error('[提交] 货物图片上传失败:', err);
       result.errors.push(`货物图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      return result; // 立即返回，不继续提交
     }
   }
 
