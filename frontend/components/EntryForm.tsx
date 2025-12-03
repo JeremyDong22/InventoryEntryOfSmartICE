@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v3.4 - 收货单识别 UX 优化：上传后显示"AI识别"按钮，点击触发识别
 // v3.3 - 集成 Gemini 2.0 Flash 收货单图片识别，AI开关开启时自动识别填充表单
 // v3.2 - 优化提交 UI 反馈：进度提示 + 绿色成功界面 + 倒计时跳转
 // v3.0 - 重构图片上传：收货单+货物分开，供应商"其他"选项，AI开关（默认关）
@@ -222,20 +223,20 @@ const CategoryScreen: React.FC<{ onSelect: (cat: CategoryType) => void; onBack: 
 
 // --- Worksheet Screen ---
 
+// v3.4 - 修改 props：移除 aiAutoFill 开关，改为 isRecognizing + onAIRecognize 按钮
 // v3.0 - 新增 props：
 // - supplierOther + onSupplierOtherChange: "其他"供应商名称
 // - receiptImage + goodsImage: 分类图片
-// - aiAutoFill + onAiAutoFillChange: AI 自动填入开关
 const WorksheetScreen: React.FC<{
   items: ProcurementItem[];
   supplier: string;
   supplierOther: string;
   notes: string;
   isAnalyzing: boolean;
+  isRecognizing: boolean;  // v3.4: AI识别中状态
   grandTotal: number;
   receiptImage: AttachedImage | null;
   goodsImage: AttachedImage | null;
-  aiAutoFill: boolean;
   voiceStatus: RecordingStatus;
   voiceMessage: string;
   transcriptionText: string;
@@ -252,17 +253,17 @@ const WorksheetScreen: React.FC<{
   onGoodsImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveReceiptImage: () => void;
   onRemoveGoodsImage: () => void;
-  onAiAutoFillChange: (val: boolean) => void;
+  onAIRecognize: () => void;  // v3.4: AI识别按钮点击
   onVoiceStart: () => void;
   onVoiceStop: () => void;
   onTranscriptionChange: (text: string) => void;
   onSendTranscription: () => void;
   onReview: () => void;
 }> = ({
-  items, supplier, supplierOther, notes, isAnalyzing, grandTotal, receiptImage, goodsImage, aiAutoFill,
+  items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImage, goodsImage,
   voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription,
   onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onAddItem, onRemoveItem,
-  onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAiAutoFillChange,
+  onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAIRecognize,
   onVoiceStart, onVoiceStop, onTranscriptionChange, onSendTranscription, onReview
 }) => {
   const receiptInputRef = useRef<HTMLInputElement>(null);
@@ -354,31 +355,13 @@ const WorksheetScreen: React.FC<{
              />
           </div>
 
-          {/* v3.0: 图片上传区 - 两个独立按钮（收货单 + 货物） */}
+          {/* v3.4: 图片上传区 - 收货单 + AI识别按钮 */}
           <div className="space-y-3">
-            {/* 收货单图片 + AI开关 */}
+            {/* 收货单图片 + AI识别按钮 */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[20px] tracking-wider text-zinc-500 font-bold ml-1">
-                  收货单照片
-                </label>
-                {/* AI 自动填入开关 */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-white/50">AI识别</span>
-                  <button
-                    onClick={() => onAiAutoFillChange(!aiAutoFill)}
-                    className={`relative w-11 h-6 rounded-full transition-all ${
-                      aiAutoFill ? 'bg-ios-blue' : 'bg-white/20'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                        aiAutoFill ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
+              <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
+                收货单照片
+              </label>
               <div className="flex items-center gap-3">
                 {/* 已上传的收货单图片 */}
                 {receiptImage && (
@@ -386,9 +369,17 @@ const WorksheetScreen: React.FC<{
                     <img
                       src={`data:${receiptImage.mimeType};base64,${receiptImage.thumbnail || receiptImage.data}`}
                       alt="收货单"
-                      className="w-20 h-20 object-cover rounded-xl border border-white/15"
+                      className={`w-20 h-20 object-cover rounded-xl border transition-all ${
+                        receiptImage.recognized ? 'border-ios-green/50' : 'border-white/15'
+                      }`}
                       style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)' }}
                     />
+                    {/* 已识别标记 */}
+                    {receiptImage.recognized && (
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-ios-green rounded-full flex items-center justify-center border-2 border-[#1a1a1f]">
+                        <Icons.Check className="w-3 h-3 text-white" />
+                      </div>
+                    )}
                     <button
                       onClick={onRemoveReceiptImage}
                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
@@ -397,7 +388,7 @@ const WorksheetScreen: React.FC<{
                     </button>
                   </div>
                 )}
-                {/* 上传按钮 */}
+                {/* 上传按钮 - 无图片时显示 */}
                 {!receiptImage && (
                   <button
                     onClick={() => receiptInputRef.current?.click()}
@@ -413,6 +404,37 @@ const WorksheetScreen: React.FC<{
                       </>
                     )}
                   </button>
+                )}
+                {/* v3.4: AI识别按钮 - 有图片且未识别时显示 */}
+                {receiptImage && !receiptImage.recognized && (
+                  <button
+                    onClick={onAIRecognize}
+                    disabled={isRecognizing}
+                    className="h-10 px-4 rounded-xl flex items-center gap-2 transition-all active:scale-95 disabled:opacity-60 border border-ios-blue/30 hover:border-ios-blue/50"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(91,163,192,0.2) 0%, rgba(91,163,192,0.1) 100%)',
+                      boxShadow: '0 2px 12px rgba(91,163,192,0.15)'
+                    }}
+                  >
+                    {isRecognizing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
+                        <span className="text-sm text-ios-blue font-medium">识别中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Icons.Sparkles className="w-4 h-4 text-ios-blue" />
+                        <span className="text-sm text-ios-blue font-medium">AI识别</span>
+                      </>
+                    )}
+                  </button>
+                )}
+                {/* 已识别提示 */}
+                {receiptImage && receiptImage.recognized && (
+                  <span className="text-xs text-ios-green flex items-center gap-1">
+                    <Icons.Check className="w-3 h-3" />
+                    已识别
+                  </span>
                 )}
               </div>
               <input
@@ -964,10 +986,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const [items, setItems] = useState<ProcurementItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // v3.0: 分类图片状态（替代 attachedImages 数组）
+  // v3.4: 分类图片状态 + AI识别状态（移除 aiAutoFill 开关）
   const [receiptImage, setReceiptImage] = useState<AttachedImage | null>(null);
   const [goodsImage, setGoodsImage] = useState<AttachedImage | null>(null);
-  const [aiAutoFill, setAiAutoFill] = useState(false);  // AI 自动填入开关（默认关闭）
+  const [isRecognizing, setIsRecognizing] = useState(false);  // v3.4: AI识别中状态
 
   // 语音录入状态
   const [voiceStatus, setVoiceStatus] = useState<RecordingStatus>('idle');
@@ -1185,7 +1207,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     setItems(items.filter((_, i) => i !== index));
   };
 
-  // v3.0: 收货单图片上传处理
+  // v3.4: 收货单图片上传处理（仅上传，不自动识别）
   const handleReceiptImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('[图片上传] 触发收货单上传');
     const files = e.target.files;
@@ -1205,7 +1227,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
       // 2. 生成缩略图
       const thumbnail = await generateThumbnail(compressed.data);
 
-      // 3. 创建附件对象
+      // 3. 创建附件对象（v3.4: 不自动识别，等用户点击"AI识别"按钮）
       const newImage: AttachedImage = {
         id: crypto.randomUUID(),
         data: compressed.data,
@@ -1217,28 +1239,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
       };
 
       setReceiptImage(newImage);
-      console.log('[图片上传] 收货单图片处理完成!');
-
-      // v3.3: AI 自动识别（当 aiAutoFill 开启时）- 使用 Gemini 2.0 Flash
-      if (aiAutoFill) {
-        console.log('[图片上传] AI 自动识别已开启，调用 Gemini 2.0 Flash...');
-        try {
-          const result = await recognizeReceipt(compressed.data, compressed.mimeType);
-          if (result) {
-            console.log('[图片识别] 识别成功:', result);
-            // 使用与语音录入相同的表单填充逻辑
-            fillFormWithResult(result);
-            // 标记图片已识别
-            setReceiptImage(prev => prev ? { ...prev, recognized: true } : null);
-          } else {
-            console.warn('[图片识别] 识别失败，未返回结果');
-            alert('收货单识别失败，请手动输入或重试');
-          }
-        } catch (recognitionError) {
-          console.error('[图片识别] 识别出错:', recognitionError);
-          alert('收货单识别出错，请手动输入');
-        }
-      }
+      console.log('[图片上传] 收货单图片处理完成，等待用户点击"AI识别"');
 
     } catch (error) {
       console.error('收货单图片处理失败:', error);
@@ -1246,6 +1247,33 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     }
 
     setIsAnalyzing(false);
+  };
+
+  // v3.4: AI识别按钮点击处理
+  const handleAIRecognize = async () => {
+    if (!receiptImage || isRecognizing) return;
+
+    console.log('[AI识别] 开始识别收货单...');
+    setIsRecognizing(true);
+
+    try {
+      const result = await recognizeReceipt(receiptImage.data, receiptImage.mimeType);
+      if (result) {
+        console.log('[AI识别] 识别成功:', result);
+        // 使用与语音录入相同的表单填充逻辑
+        fillFormWithResult(result);
+        // 标记图片已识别
+        setReceiptImage(prev => prev ? { ...prev, recognized: true } : null);
+      } else {
+        console.warn('[AI识别] 识别失败，未返回结果');
+        alert('收货单识别失败，请手动输入或重试');
+      }
+    } catch (recognitionError) {
+      console.error('[AI识别] 识别出错:', recognitionError);
+      alert('收货单识别出错，请手动输入');
+    }
+
+    setIsRecognizing(false);
   };
 
   // v3.0: 货物图片上传处理
@@ -1494,10 +1522,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           supplierOther={supplierOther}
           notes={notes}
           isAnalyzing={isAnalyzing}
+          isRecognizing={isRecognizing}
           grandTotal={calculateGrandTotal()}
           receiptImage={receiptImage}
           goodsImage={goodsImage}
-          aiAutoFill={aiAutoFill}
           voiceStatus={voiceStatus}
           voiceMessage={voiceMessage}
           transcriptionText={transcriptionText}
@@ -1514,7 +1542,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           onGoodsImageUpload={handleGoodsImageUpload}
           onRemoveReceiptImage={removeReceiptImage}
           onRemoveGoodsImage={removeGoodsImage}
-          onAiAutoFillChange={setAiAutoFill}
+          onAIRecognize={handleAIRecognize}
           onVoiceStart={handleVoiceStart}
           onVoiceStop={handleVoiceStop}
           onTranscriptionChange={setTranscriptionText}
