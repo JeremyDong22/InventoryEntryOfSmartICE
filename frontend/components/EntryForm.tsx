@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v3.6 - 调整UI顺序：图片上传在前，供应商/备注在后，避免AI识别覆盖用户手动输入
 // v3.5 - 修复产品下拉选择不自动填入的 bug（React 状态竞态问题）
 // v3.4 - 收货单识别 UX 优化：上传后显示"AI识别"按钮，点击触发识别
 // v3.3 - 集成 Gemini 2.0 Flash 收货单图片识别，AI开关开启时自动识别填充表单
@@ -316,50 +317,9 @@ const WorksheetScreen: React.FC<{
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 pb-40 space-y-6">
 
         {/* Info Section - Card Layer */}
+        {/* v3.6: 调整顺序 - 图片上传在前，供应商/备注在后，避免AI识别覆盖用户输入 */}
         <GlassCard padding="md" className="space-y-4">
-          {/* v3.0: 供应商选择 + "其他"选项，v3.1: 添加下拉按钮 */}
-          <AutocompleteInput
-            label="供应商全称"
-            value={supplier}
-            onChange={onSupplierChange}
-            placeholder="输入供应商名称或选择'其他'"
-            searchFn={searchSuppliers}
-            debounceMs={300}
-            minChars={1}
-            extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
-            showDropdownButton={true}
-            getAllOptionsFn={getAllSuppliersAsOptions}
-          />
-          {/* v3.0: "其他"供应商输入框 - 仅当选择"其他"时显示 */}
-          {supplier === '其他' && (
-            <div className="animate-slide-in">
-              <label className="block text-[16px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-                请输入供应商名称
-              </label>
-              <input
-                type="text"
-                value={supplierOther}
-                onChange={(e) => onSupplierOtherChange(e.target.value)}
-                placeholder="供应商全称..."
-                className="glass-input w-full py-3"
-              />
-            </div>
-          )}
-
-          <div>
-             <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-               备注信息
-             </label>
-             <textarea
-                value={notes}
-                onChange={(e) => onNotesChange(e.target.value)}
-                placeholder="备注信息（可选）"
-                rows={1}
-                className="glass-input w-full resize-none py-4 leading-normal"
-             />
-          </div>
-
-          {/* v3.5: 图片上传区 - 收货单支持多张，AI识别按钮移至下方 */}
+          {/* 图片上传区 - 收货单支持多张，AI识别按钮移至下方 */}
           <div className="space-y-3">
             {/* 收货单图片（多张） */}
             <div>
@@ -501,6 +461,48 @@ const WorksheetScreen: React.FC<{
                 className="hidden"
               />
             </div>
+          </div>
+
+          {/* 供应商选择 + "其他"选项 */}
+          <AutocompleteInput
+            label="供应商全称"
+            value={supplier}
+            onChange={onSupplierChange}
+            placeholder="输入供应商名称或选择'其他'"
+            searchFn={searchSuppliers}
+            debounceMs={300}
+            minChars={1}
+            extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
+            showDropdownButton={true}
+            getAllOptionsFn={getAllSuppliersAsOptions}
+          />
+          {/* "其他"供应商输入框 - 仅当选择"其他"时显示 */}
+          {supplier === '其他' && (
+            <div className="animate-slide-in">
+              <label className="block text-[16px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
+                请输入供应商名称
+              </label>
+              <input
+                type="text"
+                value={supplierOther}
+                onChange={(e) => onSupplierOtherChange(e.target.value)}
+                placeholder="供应商全称..."
+                className="glass-input w-full py-3"
+              />
+            </div>
+          )}
+
+          <div>
+             <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
+               备注信息
+             </label>
+             <textarea
+                value={notes}
+                onChange={(e) => onNotesChange(e.target.value)}
+                placeholder="备注信息（可选）"
+                rows={1}
+                className="glass-input w-full resize-none py-4 leading-normal"
+             />
           </div>
         </GlassCard>
 
