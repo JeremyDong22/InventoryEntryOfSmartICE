@@ -1184,7 +1184,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName }) => {
       {step === 'CATEGORY' && (
         <CategoryScreen
           onSelect={handleCategorySelect}
-          onBack={() => setStep('CATEGORY')}
+          onBack={() => setStep('WELCOME')}
         />
       )}
       {step === 'WORKSHEET' && (
