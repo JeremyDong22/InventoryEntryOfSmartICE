@@ -1,6 +1,9 @@
 /**
  * 入库数据提交服务
  * 处理采购数据从前端到数据库的完整流程
+ * v2.1 - 添加 total_amount 采购总价字段
+ * v2.0 - 单位改为直接使用 unitId，不再调用 matchUnit()
+ * v1.2 - 添加图片上传到 Supabase Storage
  * v1.1 - 合并 PR #6 完整实现
  */
 
@@ -8,13 +11,13 @@ import { DailyLog, ProcurementItem } from '../types';
 import {
   matchProduct,
   matchSupplier,
-  matchUnit,
   getProductSkus,
   createPurchasePrices,
   StorePurchasePrice,
   Product,
   ProductSku,
 } from './supabaseService';
+import { uploadImageToStorage } from './imageService';
 
 // ============ 类型定义 ============
 
@@ -57,6 +60,7 @@ const CATEGORY_MAPPING: Record<string, string> = {
 
 /**
  * 匹配单个物品（产品 + SKU + 单位）
+ * v2.0 - 单位改为直接使用 item.unitId，不再调用 matchUnit()
  */
 async function matchItem(item: ProcurementItem): Promise<ItemMatchResult> {
   const result: ItemMatchResult = {
@@ -98,15 +102,12 @@ async function matchItem(item: ProcurementItem): Promise<ItemMatchResult> {
     console.warn(`[匹配] 获取 SKU 失败:`, err);
   }
 
-  // 3. 匹配单位
-  if (item.unit) {
-    const unit = await matchUnit(item.unit);
-    if (unit) {
-      result.unitId = unit.unit_id;
-      console.log(`[匹配] 单位匹配: ${item.unit} -> ${unit.unit_name} (ID: ${unit.unit_id})`);
-    } else {
-      console.log(`[匹配] 单位未找到: ${item.unit}`);
-    }
+  // 3. v2.0: 直接使用前端选择的 unitId，不再模糊匹配
+  if (item.unitId) {
+    result.unitId = item.unitId;
+    console.log(`[匹配] 单位使用: ${item.unit} (ID: ${item.unitId})`);
+  } else {
+    console.log(`[匹配] 单位未选择: ${item.unit || '空'}`);
   }
 
   return result;
@@ -154,6 +155,28 @@ export async function submitProcurement(
 
   console.log(`[提交] 开始处理 ${validItems.length} 条采购记录`);
   console.log(`[提交] 门店: ${storeId}, 员工: ${employeeId}`);
+
+  // 上传图片到 Supabase Storage
+  let imageUrls: string[] = [];
+  if (dailyLog.attachments && dailyLog.attachments.length > 0) {
+    console.log(`[提交] 开始上传 ${dailyLog.attachments.length} 张图片`);
+    try {
+      imageUrls = await Promise.all(
+        dailyLog.attachments.map(async (attachment) => {
+          return await uploadImageToStorage(
+            attachment.data,
+            attachment.mimeType,
+            storeId
+          );
+        })
+      );
+      console.log(`[提交] 图片上传成功: ${imageUrls.length} 张`);
+    } catch (err) {
+      console.error('[提交] 图片上传失败:', err);
+      result.errors.push(`图片上传失败: ${err instanceof Error ? err.message : '未知错误'}`);
+      // 图片上传失败不影响数据提交，继续处理
+    }
+  }
 
   // 匹配供应商
   let supplierId: number | null = null;
@@ -237,10 +260,12 @@ export async function submitProcurement(
       purchase_price: item.unitPrice,
       purchase_unit_id: matchResult.unitId || 1, // 默认单位 ID
       purchase_quantity: item.quantity || 1,
+      total_amount: item.total || (item.quantity * item.unitPrice), // v2.1 - 采购总价
       source_type: 'manual_input', // 必须是允许的值之一
       status: 'pending',
       notes: `${item.name}${item.specification ? ` - ${item.specification}` : ''} | 原始供应商: ${dailyLog.supplier}`,
       created_by: employeeId, // 直接使用 UUID，数据库已支持
+      receipt_images: imageUrls.length > 0 ? imageUrls : undefined, // 添加图片URLs
     };
 
     records.push(record);

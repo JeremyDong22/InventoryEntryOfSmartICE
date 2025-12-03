@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppView } from '../types';
 import { Icons } from '../constants';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SidebarProps {
   currentView: AppView;
@@ -10,12 +11,26 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isOpen, toggleSidebar }) => {
+  const { user } = useAuth();
   const navItems = [
     { id: AppView.DASHBOARD, label: '工作台', icon: Icons.ChartBar },
     { id: AppView.NEW_ENTRY, label: '开始录入', icon: Icons.PlusCircle },
     { id: AppView.HISTORY, label: '历史记录', icon: Icons.Clock },
     // 设计助手已移除 - 前后端分离重构
   ];
+
+  // 获取用户名首字母缩写
+  const getInitials = (name: string) => {
+    const parts = name.split(' ').filter(p => p);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
+
+  const userInitials = user ? getInitials(user.name) : 'U';
+  const userName = user?.name || '用户';
+  const storeName = user?.store_name || '未分配门店';
 
   return (
     <>
@@ -62,10 +77,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isO
                     border: '1px solid rgba(255,255,255,0.1)'
                   }}>
                <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                    style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>JD</div>
+                    style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>{userInitials}</div>
                <div>
-                 <div className="text-sm font-semibold text-white">店长</div>
-                 <div className="text-xs text-white/60">德阳店</div>
+                 <div className="text-sm font-semibold text-white">{userName}</div>
+                 <div className="text-xs text-white/60">{storeName}</div>
                </div>
              </div>
            </div>
@@ -121,10 +136,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, isO
                  border: '1px solid rgba(255,255,255,0.1)'
                }}>
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white"
-                 style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>JD</div>
+                 style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)' }}>{userInitials}</div>
             <div>
-              <div className="text-sm font-semibold text-white">店长</div>
-              <div className="text-xs text-white/60">德阳店</div>
+              <div className="text-sm font-semibold text-white">{userName}</div>
+              <div className="text-xs text-white/60">{storeName}</div>
             </div>
           </div>
         </div>

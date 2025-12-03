@@ -1,12 +1,12 @@
+// v3.1.0 - 添加登录页面路由
 import React, { useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { EntryForm } from './components/EntryForm';
-// 设计助手已移除 - 前后端分离重构
-// import { DesignAssistant } from './components/DesignAssistant';
+import { LoginPage } from './components/LoginPage';
 import { DailyLog, AppView } from './types';
 import { Icons } from './constants';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
 const INITIAL_DATA: DailyLog[] = [
   { 
@@ -87,13 +87,29 @@ const INITIAL_DATA: DailyLog[] = [
   }
 ];
 
-const App: React.FC = () => {
+// 主应用内容（需要在 AuthProvider 内部使用）
+const AppContent: React.FC = () => {
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [logs, setLogs] = useState<DailyLog[]>(INITIAL_DATA);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Mock user data - in a real app this would come from an auth context
-  const CURRENT_USER_NAME = "辉哥";
+  // 从认证上下文获取用户名
+  const CURRENT_USER_NAME = user?.name || "用户";
+
+  // 加载中显示
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center">
+        <div className="text-white text-xl">加载中...</div>
+      </div>
+    );
+  }
+
+  // 未登录显示登录页面
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
   const handleSaveEntry = (logData: Omit<DailyLog, 'id'>) => {
     const newLog: DailyLog = {
@@ -138,34 +154,42 @@ const App: React.FC = () => {
     </div>
   );
 
+  // 已登录显示主应用
+  return (
+    <div className="fixed inset-0 flex text-primary font-sans overflow-hidden">
+      <Sidebar
+        currentView={currentView}
+        onChangeView={setCurrentView}
+        isOpen={sidebarOpen}
+        toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+      />
+
+      <div className="flex-1 flex flex-col h-full relative w-full">
+        {/* Mobile Header Button - Storm Glass */}
+        {currentView !== AppView.NEW_ENTRY && (
+          <div className="md:hidden pt-6 px-4 pb-2 flex items-center justify-between">
+             <span className="text-xl font-bold text-white">门店管家</span>
+             <button onClick={() => setSidebarOpen(true)} className="p-2 text-white/70 hover:text-white">
+               <Icons.Menu className="w-6 h-6" />
+             </button>
+          </div>
+        )}
+
+        <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
+            {currentView === AppView.DASHBOARD && <Dashboard logs={logs} />}
+            {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} />}
+            {currentView === AppView.HISTORY && <HistoryView />}
+        </main>
+      </div>
+    </div>
+  );
+};
+
+// 根组件：提供 AuthProvider
+const App: React.FC = () => {
   return (
     <AuthProvider>
-      <div className="fixed inset-0 flex text-primary font-sans overflow-hidden">
-        <Sidebar
-          currentView={currentView}
-          onChangeView={setCurrentView}
-          isOpen={sidebarOpen}
-          toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        />
-
-        <div className="flex-1 flex flex-col h-full relative w-full">
-          {/* Mobile Header Button - Storm Glass */}
-          {currentView !== AppView.NEW_ENTRY && (
-            <div className="md:hidden pt-6 px-4 pb-2 flex items-center justify-between">
-               <span className="text-xl font-bold text-white">门店管家</span>
-               <button onClick={() => setSidebarOpen(true)} className="p-2 text-white/70 hover:text-white">
-                 <Icons.Menu className="w-6 h-6" />
-               </button>
-            </div>
-          )}
-
-          <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
-              {currentView === AppView.DASHBOARD && <Dashboard logs={logs} />}
-              {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} />}
-              {currentView === AppView.HISTORY && <HistoryView />}
-          </main>
-        </div>
-      </div>
+      <AppContent />
     </AuthProvider>
   );
 };

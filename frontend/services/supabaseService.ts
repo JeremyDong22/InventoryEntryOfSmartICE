@@ -1,40 +1,18 @@
 /**
  * Supabase 数据库服务
- * 处理与 Database (public schema) 的数据交互
+ * v2.1 - 添加 total_amount 采购总价字段
+ *
+ * 变更历史：
+ * - v2.1: 添加 total_amount 字段支持采购总价
+ * - v2.0: 使用 supabaseClient.ts 提供的单例客户端
+ * - v1.0: 独立创建 Supabase 客户端
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { supabase } from './supabaseClient';
 import { searchInList } from './pinyinSearch';
 
-// Supabase 配置
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://wdpeoyugsxqnpwwtkqsl.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-// 创建 Supabase 客户端
-let supabase: SupabaseClient | null = null;
-
-export function getSupabaseClient(): SupabaseClient {
-  if (!supabase) {
-    if (!SUPABASE_ANON_KEY) {
-      console.warn('VITE_SUPABASE_ANON_KEY 未配置');
-    }
-    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      db: {
-        schema: 'public', // 使用 public schema
-      },
-      auth: {
-        persistSession: false, // 前端不持久化会话
-      },
-      global: {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Accept-Profile': 'public', // 指定 schema
-          'Prefer': 'return=representation', // 要求返回完整数据
-        },
-      },
-    });
-  }
+// 导出 supabase 客户端以保持向后兼容
+export function getSupabaseClient() {
   return supabase;
 }
 
@@ -89,10 +67,12 @@ export interface StorePurchasePrice {
   purchase_price: number;
   purchase_unit_id: number;
   purchase_quantity?: number;
+  total_amount?: number; // v2.1 - 采购总价（实际支付金额）
   source_type?: string;
   status?: string;
   notes?: string;
   created_by: string;
+  receipt_images?: string[]; // 收货单图片URLs数组
 }
 
 // ============ 供应商 API ============
@@ -101,8 +81,7 @@ export interface StorePurchasePrice {
  * 获取供应商列表
  */
 export async function getSuppliers(): Promise<Supplier[]> {
-  const client = getSupabaseClient();
-  const { data, error } = await client
+  const { data, error } = await supabase
     .from('ims_supplier')
     .select('supplier_id, supplier_code, supplier_name, short_name, supplier_type, is_active')
     .eq('is_active', true)
@@ -120,10 +99,8 @@ export async function getSuppliers(): Promise<Supplier[]> {
  * 模糊匹配供应商
  */
 export async function matchSupplier(name: string): Promise<Supplier | null> {
-  const client = getSupabaseClient();
-
   // 先精确匹配
-  const { data: exactMatch } = await client
+  const { data: exactMatch } = await supabase
     .from('ims_supplier')
     .select('*')
     .eq('supplier_name', name)
@@ -135,7 +112,7 @@ export async function matchSupplier(name: string): Promise<Supplier | null> {
   }
 
   // 模糊匹配
-  const { data: fuzzyMatch } = await client
+  const { data: fuzzyMatch } = await supabase
     .from('ims_supplier')
     .select('*')
     .ilike('supplier_name', `%${name}%`)
@@ -151,8 +128,7 @@ export async function matchSupplier(name: string): Promise<Supplier | null> {
  * 获取产品列表（按分类）
  */
 export async function getProducts(productType?: string): Promise<Product[]> {
-  const client = getSupabaseClient();
-  let query = client
+  let query = supabase
     .from('ims_product')
     .select('product_id, product_code, product_name, product_type, category_id, base_unit_id, purchase_unit_id, is_active')
     .eq('is_active', true);
@@ -175,10 +151,9 @@ export async function getProducts(productType?: string): Promise<Product[]> {
  * 模糊匹配产品
  */
 export async function matchProduct(name: string): Promise<Product[]> {
-  const client = getSupabaseClient();
 
   // 使用 ILIKE 进行模糊匹配
-  const { data, error } = await client
+  const { data, error } = await supabase
     .from('ims_product')
     .select('*')
     .or(`product_name.ilike.%${name}%,product_code.ilike.%${name}%`)
@@ -197,8 +172,7 @@ export async function matchProduct(name: string): Promise<Product[]> {
  * 获取产品的 SKU 列表
  */
 export async function getProductSkus(productId: number): Promise<ProductSku[]> {
-  const client = getSupabaseClient();
-  const { data, error } = await client
+  const { data, error } = await supabase
     .from('ims_product_sku')
     .select('*')
     .eq('product_id', productId)
@@ -219,8 +193,7 @@ export async function getProductSkus(productId: number): Promise<ProductSku[]> {
  * 获取计量单位列表
  */
 export async function getUnits(): Promise<UnitOfMeasure[]> {
-  const client = getSupabaseClient();
-  const { data, error } = await client
+  const { data, error } = await supabase
     .from('ims_unit_of_measure')
     .select('*')
     .order('unit_type');
@@ -233,44 +206,35 @@ export async function getUnits(): Promise<UnitOfMeasure[]> {
   return data || [];
 }
 
-// 单位映射表
-const UNIT_MAPPING: Record<string, string[]> = {
-  'kg': ['kg', '千克', '公斤', 'KG', 'Kg'],
-  'jin': ['斤', '市斤'],
-  'g': ['g', '克', 'G'],
-  'box': ['箱', '件'],
-  'bag': ['袋', '包'],
-  'bottle': ['瓶', '支'],
-  'piece': ['个', '只', '枚'],
-};
+/**
+ * 获取所有单位列表（用于下拉选择）
+ * v2.0 - 添加用于单位下拉选择的简化接口
+ */
+export async function getAllUnits(): Promise<Array<{id: number, code: string, name: string}>> {
+  const { data, error } = await supabase
+    .from('ims_unit_of_measure')
+    .select('unit_id, unit_code, unit_name')
+    .order('unit_name');
+
+  if (error) {
+    console.error('获取单位列表失败:', error);
+    throw error;
+  }
+
+  return data?.map(u => ({
+    id: u.unit_id,
+    code: u.unit_code,
+    name: u.unit_name
+  })) || [];
+}
 
 /**
- * 匹配单位
+ * 匹配单位（已弃用，保留用于向后兼容）
+ * v2.0 - 简化为直接查询，不再使用映射表
  */
 export async function matchUnit(unitName: string): Promise<UnitOfMeasure | null> {
-  // 先从映射表查找标准单位代码
-  let standardCode: string | null = null;
-  for (const [code, variants] of Object.entries(UNIT_MAPPING)) {
-    if (variants.includes(unitName)) {
-      standardCode = code;
-      break;
-    }
-  }
-
-  const client = getSupabaseClient();
-
-  if (standardCode) {
-    // 用标准代码查询
-    const { data } = await client
-      .from('ims_unit_of_measure')
-      .select('*')
-      .eq('unit_code', standardCode)
-      .single();
-    return data;
-  }
-
-  // 直接模糊匹配
-  const { data } = await client
+  // 直接精确匹配或模糊匹配
+  const { data } = await supabase
     .from('ims_unit_of_measure')
     .select('*')
     .or(`unit_code.eq.${unitName},unit_name.eq.${unitName}`)
@@ -285,10 +249,9 @@ export async function matchUnit(unitName: string): Promise<UnitOfMeasure | null>
  * 创建采购价格记录
  */
 export async function createPurchasePrice(data: StorePurchasePrice): Promise<StorePurchasePrice> {
-  const client = getSupabaseClient();
 
-  const { data: result, error } = await client
-    .from('ims_store_purchase_price')
+  const { data: result, error } = await supabase
+    .from('ims_material_price')
     .insert({
       store_id: data.store_id,
       sku_id: data.sku_id,
@@ -317,10 +280,9 @@ export async function createPurchasePrice(data: StorePurchasePrice): Promise<Sto
  * 批量创建采购价格记录
  */
 export async function createPurchasePrices(records: StorePurchasePrice[]): Promise<StorePurchasePrice[]> {
-  const client = getSupabaseClient();
 
-  const { data: results, error } = await client
-    .from('ims_store_purchase_price')
+  const { data: results, error } = await supabase
+    .from('ims_material_price')
     .insert(records.map(r => ({
       store_id: r.store_id,
       sku_id: r.sku_id,
@@ -329,10 +291,12 @@ export async function createPurchasePrices(records: StorePurchasePrice[]): Promi
       purchase_price: r.purchase_price,
       purchase_unit_id: r.purchase_unit_id,
       purchase_quantity: r.purchase_quantity,
+      total_amount: r.total_amount, // v2.1 - 采购总价
       source_type: r.source_type || 'manual_input',
       status: r.status || 'pending',
       notes: r.notes,
       created_by: r.created_by,
+      receipt_images: r.receipt_images || [],
     })))
     .select();
 
@@ -351,8 +315,7 @@ export async function createPurchasePrices(records: StorePurchasePrice[]): Promi
  */
 export async function testConnection(): Promise<boolean> {
   try {
-    const client = getSupabaseClient();
-    const { error } = await client.from('ims_supplier').select('supplier_id').limit(1);
+      const { error } = await supabase.from('ims_supplier').select('supplier_id').limit(1);
     return !error;
   } catch {
     return false;

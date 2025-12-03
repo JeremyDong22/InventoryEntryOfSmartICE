@@ -165,3 +165,49 @@ export const base64ToBlob = (base64Data: string, mimeType: string = 'image/jpeg'
   const byteArray = new Uint8Array(byteNumbers);
   return new Blob([byteArray], { type: mimeType });
 };
+
+/**
+ * 上传图片到 Supabase Storage
+ * v1.0 - 上传收货单图片到 ims-receipts bucket
+ *
+ * @param base64Data Base64 图片数据（不含前缀）
+ * @param mimeType 图片类型
+ * @param storeId 门店ID
+ * @returns 图片的 public URL
+ */
+export const uploadImageToStorage = async (
+  base64Data: string,
+  mimeType: string,
+  storeId: string
+): Promise<string> => {
+  const { supabase } = await import('./supabaseClient');
+
+  // 1. Base64 转 Blob
+  const blob = base64ToBlob(base64Data, mimeType);
+
+  // 2. 生成文件路径：store_id/日期/时间戳_随机.jpg
+  const date = new Date().toISOString().split('T')[0];
+  const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`;
+  const path = `${storeId}/${date}/${fileName}`;
+
+  // 3. 上传到 Storage
+  const { data, error } = await supabase.storage
+    .from('ims-receipts')
+    .upload(path, blob, {
+      contentType: mimeType,
+      upsert: false
+    });
+
+  if (error) {
+    console.error('[图片上传] 失败:', error);
+    throw new Error(`图片上传失败: ${error.message}`);
+  }
+
+  // 4. 返回 public URL
+  const { data: urlData } = supabase.storage
+    .from('ims-receipts')
+    .getPublicUrl(path);
+
+  console.log(`[图片上传] 成功: ${urlData.publicUrl}`);
+  return urlData.publicUrl;
+};

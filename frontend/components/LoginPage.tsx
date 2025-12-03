@@ -14,15 +14,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login, error } = useAuth();
+  const [localError, setLocalError] = useState<string | null>(null);
+  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username || !password) return;
 
     setIsSubmitting(true);
+    setLocalError(null);
     try {
-      await login({ username, password });
+      await login(username, password);
+    } catch (error) {
+      setLocalError(error instanceof Error ? error.message : '登录失败');
     } finally {
       setIsSubmitting(false);
     }
@@ -71,9 +75,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
           </div>
 
           {/* 错误提示 */}
-          {error && (
+          {localError && (
             <div className="text-ios-red text-sm text-center py-2">
-              {error}
+              {localError}
             </div>
           )}
 

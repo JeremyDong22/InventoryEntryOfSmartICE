@@ -1,4 +1,6 @@
 // EntryForm - 采购录入表单
+// v2.1 - 支持总价/单价双向输入，自动换算
+// v2.0 - 单位输入改为下拉列表，移除单位映射表，直接使用 unitId
 // v1.9 - 添加收货订单图片上传区，集成到信息卡片中
 // v1.8 - 语音录入交互优化：识别后可编辑文本，点击发送按钮才解析填充表单
 // v1.7 - UI 重构：隐藏相机/文件按钮，文本框多行滚动，提交按钮移至物品列表区域
@@ -17,7 +19,7 @@ import { submitProcurement, formatSubmitResult } from '../services/inventoryServ
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../constants';
 import { GlassCard, Button, Input, AutocompleteInput } from './ui';
-import { searchSuppliers, searchProducts } from '../services/supabaseService';
+import { searchSuppliers, searchProducts, getAllUnits } from '../services/supabaseService';
 
 interface EntryFormProps {
   onSave: (log: Omit<DailyLog, 'id'>) => void;
@@ -242,6 +244,16 @@ const WorksheetScreen: React.FC<{
   const prevItemsLengthRef = useRef<number>(items.length);
   const isInitialMountRef = useRef<boolean>(true);
 
+  // v2.0 - 单位下拉选项
+  const [unitOptions, setUnitOptions] = useState<Array<{id: number, code: string, name: string}>>([]);
+
+  // v2.0 - 加载单位列表
+  useEffect(() => {
+    getAllUnits()
+      .then(setUnitOptions)
+      .catch(err => console.error('[单位列表] 加载失败:', err));
+  }, []);
+
   // Scroll to top on initial mount, scroll to bottom only when new items are added
   useEffect(() => {
     if (scrollRef.current) {
@@ -406,16 +418,26 @@ const WorksheetScreen: React.FC<{
                             className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50 placeholder:text-white/40"
                         />
                     </div>
-                    {/* Unit */}
+                    {/* Unit - v2.0: 改为下拉列表 */}
                     <div className="col-span-2">
                         <label className="block text-[9px] text-muted mb-1 text-center">单位</label>
-                        <input
-                            type="text"
-                            value={item.unit}
-                            onChange={(e) => onItemChange(index, 'unit', e.target.value)}
-                            placeholder="单位"
-                            className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50 placeholder:text-white/40"
-                        />
+                        <select
+                            value={item.unitId || ''}
+                            onChange={(e) => {
+                              const selectedId = parseInt(e.target.value);
+                              const selectedUnit = unitOptions.find(u => u.id === selectedId);
+                              onItemChange(index, 'unitId', selectedId);
+                              if (selectedUnit) {
+                                onItemChange(index, 'unit', selectedUnit.name);
+                              }
+                            }}
+                            className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50"
+                        >
+                            <option value="">选择</option>
+                            {unitOptions.map(unit => (
+                              <option key={unit.id} value={unit.id}>{unit.name}</option>
+                            ))}
+                        </select>
                     </div>
                     {/* Qty */}
                     <div className="col-span-2">
@@ -439,12 +461,16 @@ const WorksheetScreen: React.FC<{
                             className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-primary font-medium outline-none focus:border-ember-rock/50 placeholder:text-white/40"
                         />
                     </div>
-                    {/* Subtotal */}
+                    {/* Subtotal - v2.1: 可编辑，支持输入总价反算单价 */}
                     <div className="col-span-3">
-                        <label className="block text-[9px] text-muted mb-1 text-center">小计</label>
-                        <div className="w-full bg-ember-rock/20 border border-ember-rock/30 rounded-glass-sm py-2 text-center text-sm font-bold text-ember-rock">
-                             {item.total ? item.total.toFixed(0) : '0'}
-                        </div>
+                        <label className="block text-[9px] text-muted mb-1 text-center">总价</label>
+                        <input
+                            type="number"
+                            value={item.total || ''}
+                            onChange={(e) => onItemChange(index, 'total', e.target.value)}
+                            placeholder="总价"
+                            className="w-full bg-ember-rock/20 border border-ember-rock/30 rounded-glass-sm py-2 text-center text-sm font-bold text-ember-rock outline-none focus:border-ember-rock/50 placeholder:text-ember-rock/40"
+                        />
                     </div>
                  </div>
               </GlassCard>
@@ -965,11 +991,22 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName }) => {
   const handleItemChange = (index: number, field: keyof ProcurementItem, value: any) => {
     const newItems = [...items];
     const updatedItem = { ...newItems[index], [field]: value };
+
+    // v2.1 - 双向计算：支持用户输入总价或单价
     if (field === 'quantity' || field === 'unitPrice') {
+      // 数量或单价变化 → 计算总价
       const q = parseFloat(updatedItem.quantity as any) || 0;
       const p = parseFloat(updatedItem.unitPrice as any) || 0;
       updatedItem.total = q * p;
+    } else if (field === 'total') {
+      // 总价变化 → 反算单价
+      const q = parseFloat(updatedItem.quantity as any) || 0;
+      const t = parseFloat(updatedItem.total as any) || 0;
+      if (q > 0) {
+        updatedItem.unitPrice = t / q;
+      }
     }
+
     newItems[index] = updatedItem;
     setItems(newItems);
   };

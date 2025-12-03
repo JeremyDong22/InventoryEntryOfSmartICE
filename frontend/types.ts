@@ -3,9 +3,10 @@ export interface ProcurementItem {
   name: string;
   specification: string; // Added specification field
   quantity: number;
-  unit: string;
-  unitPrice: number; // Added for line-item validation
-  total: number;     // quantity * unitPrice
+  unit: string;          // 保留用于显示，现在由 unitId 关联数据库
+  unitId?: number;       // v2.0 - 单位 ID，用于直接引用数据库单位表
+  unitPrice: number;     // Added for line-item validation
+  total: number;         // quantity * unitPrice
 }
 
 export type CategoryType = 'Meat' | 'Vegetables' | 'Dry Goods' | 'Alcohol' | 'Consumables' | 'Other';
