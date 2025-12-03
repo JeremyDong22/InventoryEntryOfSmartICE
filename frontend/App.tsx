@@ -1,3 +1,4 @@
+// v3.4.0 - 添加修改密码页面
 // v3.3.0 - 仪表板数据从数据库获取
 // v3.2.0 - EntryForm 欢迎页传递菜单回调
 // v3.1.0 - 添加登录页面路由
@@ -6,6 +7,7 @@ import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { EntryForm } from './components/EntryForm';
 import { LoginPage } from './components/LoginPage';
+import { ChangePasswordPage } from './components/ChangePasswordPage';
 import { DailyLog, AppView } from './types';
 import { Icons } from './constants';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -118,11 +120,12 @@ const AppContent: React.FC = () => {
         onChangeView={setCurrentView}
         isOpen={sidebarOpen}
         toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+        onChangePassword={() => setCurrentView(AppView.CHANGE_PASSWORD)}
       />
 
       <div className="flex-1 flex flex-col h-full relative w-full">
         {/* Mobile Header Button - Storm Glass */}
-        {currentView !== AppView.NEW_ENTRY && (
+        {currentView !== AppView.NEW_ENTRY && currentView !== AppView.CHANGE_PASSWORD && (
           <div className="md:hidden pt-6 px-4 pb-2 flex items-center justify-between">
              <span className="text-xl font-bold text-white">门店管家</span>
              <button onClick={() => setSidebarOpen(true)} className="p-2 text-white/70 hover:text-white">
@@ -131,7 +134,7 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
+        <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY || currentView === AppView.CHANGE_PASSWORD ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
             {currentView === AppView.DASHBOARD && (
               logsLoading ? (
                 <div className="h-full flex items-center justify-center">
@@ -143,6 +146,7 @@ const AppContent: React.FC = () => {
             )}
             {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} onOpenMenu={() => setSidebarOpen(true)} />}
             {currentView === AppView.HISTORY && <HistoryView />}
+            {currentView === AppView.CHANGE_PASSWORD && <ChangePasswordPage onBack={() => setCurrentView(AppView.DASHBOARD)} />}
         </main>
       </div>
     </div>

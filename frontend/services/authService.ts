@@ -1,14 +1,18 @@
 /**
  * 简化认证服务 - 直接查询 ims_users 表
- * v3.0 - 使用自建 ims_users 表，localStorage 会话管理
+ * v4.0 - 添加账号锁定和修改密码功能
  *
  * 变更历史：
+ * - v4.0: 登录失败5次锁定账号，支持修改密码
  * - v3.0: 移除 Supabase Auth，直接查询 ims_users 表，明文密码认证
  * - v2.0: 使用 Supabase Auth 替代 UserCenter
  * - v1.0: 使用 UserCenter JWT Token
  */
 
 import { supabase } from './supabaseClient';
+
+// 最大登录失败次数
+const MAX_LOGIN_ATTEMPTS = 5;
 
 // 当前用户信息类型
 export interface CurrentUser {
@@ -23,8 +27,27 @@ export interface CurrentUser {
 
 /**
  * 登录 - 直接查询 ims_users 表验证用户名和密码
+ * 支持账号锁定检查和失败计数
  */
 export async function login(username: string, password: string): Promise<CurrentUser> {
+  // 1. 先查询用户是否存在及锁定状态
+  const { data: userData, error: userError } = await supabase
+    .from('ims_users')
+    .select('id, is_locked, login_failed_count')
+    .eq('username', username)
+    .eq('is_active', true)
+    .single();
+
+  if (userError || !userData) {
+    throw new Error('用户名或密码错误');
+  }
+
+  // 2. 检查账号是否被锁定
+  if (userData.is_locked) {
+    throw new Error('账号已被锁定，请联系管理员解锁');
+  }
+
+  // 3. 验证密码
   const { data, error } = await supabase
     .from('ims_users')
     .select(`
@@ -42,8 +65,34 @@ export async function login(username: string, password: string): Promise<Current
     .single();
 
   if (error || !data) {
-    throw new Error('用户名或密码错误');
+    // 密码错误，增加失败次数
+    const newFailedCount = (userData.login_failed_count || 0) + 1;
+    const shouldLock = newFailedCount >= MAX_LOGIN_ATTEMPTS;
+
+    await supabase
+      .from('ims_users')
+      .update({
+        login_failed_count: newFailedCount,
+        is_locked: shouldLock,
+        locked_at: shouldLock ? new Date().toISOString() : null
+      })
+      .eq('id', userData.id);
+
+    if (shouldLock) {
+      throw new Error('密码错误次数过多，账号已被锁定');
+    }
+
+    const remainingAttempts = MAX_LOGIN_ATTEMPTS - newFailedCount;
+    throw new Error(`密码错误，还剩 ${remainingAttempts} 次尝试机会`);
   }
+
+  // 4. 登录成功，重置失败次数
+  await supabase
+    .from('ims_users')
+    .update({
+      login_failed_count: 0
+    })
+    .eq('id', data.id);
 
   const user: CurrentUser = {
     id: data.id,
@@ -59,6 +108,38 @@ export async function login(username: string, password: string): Promise<Current
   localStorage.setItem('user', JSON.stringify(user));
 
   return user;
+}
+
+/**
+ * 修改密码 - 验证原密码后更新新密码
+ */
+export async function changePassword(
+  userId: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  // 1. 验证原密码
+  const { data: userData, error: verifyError } = await supabase
+    .from('ims_users')
+    .select('id')
+    .eq('id', userId)
+    .eq('password', currentPassword)
+    .single();
+
+  if (verifyError || !userData) {
+    throw new Error('原密码错误');
+  }
+
+  // 2. 更新新密码
+  const { error: updateError } = await supabase
+    .from('ims_users')
+    .update({ password: newPassword })
+    .eq('id', userId);
+
+  if (updateError) {
+    console.error('更新密码失败:', updateError);
+    throw new Error('修改密码失败，请稍后重试');
+  }
 }
 
 /**

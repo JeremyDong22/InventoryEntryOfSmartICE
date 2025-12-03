@@ -81,8 +81,10 @@ app = FastAPI(
 # 开发环境默认域名
 DEFAULT_ORIGINS = [
     "http://localhost:3000",      # Vite 开发服务器
+    "http://localhost:3001",      # Vite 备用端口
     "http://localhost:5173",      # Vite 默认端口
     "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
     "http://127.0.0.1:5173",
 ]
 
