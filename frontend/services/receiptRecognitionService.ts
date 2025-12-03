@@ -1,11 +1,12 @@
 // 收货单图片识别服务
+// v1.1 - 将 Gemini API Key 改为环境变量
 // v1.0 - 使用 Gemini 2.0 Flash 识别收货单/送货单图片，提取结构化采购数据
 // 返回与语音录入相同的 VoiceEntryResult 格式，复用表单填充逻辑
 
 import { ProcurementItem } from '../types';
 
 // Gemini 2.0 Flash API 配置
-const GEMINI_API_KEY = 'AIzaSyAJGnS52a-Zcmehgx5YaIMaKuj_BpdWOms';
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 // 识别结果 - 与 VoiceEntryResult 结构一致，复用表单填充逻辑
@@ -72,6 +73,12 @@ export async function recognizeReceipt(
   imageBase64: string,
   mimeType: string
 ): Promise<ReceiptRecognitionResult | null> {
+  // v1.1: 检查 API Key 是否配置
+  if (!GEMINI_API_KEY) {
+    console.error('[收货单识别] 错误: 未配置 VITE_GEMINI_API_KEY 环境变量');
+    throw new Error('收货单识别服务未配置，请联系管理员');
+  }
+
   console.log('[收货单识别] 开始识别，图片大小:', Math.round(imageBase64.length * 0.75 / 1024), 'KB');
 
   try {
