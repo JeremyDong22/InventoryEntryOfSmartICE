@@ -1,4 +1,6 @@
 // EntryForm - 采购录入表单
+// v3.3 - 集成 Gemini 2.0 Flash 收货单图片识别，AI开关开启时自动识别填充表单
+// v3.2 - 优化提交 UI 反馈：进度提示 + 绿色成功界面 + 倒计时跳转
 // v3.0 - 重构图片上传：收货单+货物分开，供应商"其他"选项，AI开关（默认关）
 // v2.6 - 欢迎页添加右上角菜单按钮，修复分类页返回按钮导航
 // v2.5 - 合并"拍照"和"相册"按钮为单一"添加"按钮
@@ -11,11 +13,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types';
-// 图片识别功能暂时禁用，待后端 API 完成后重新启用
-// import { parseDailyReport } from '../services/geminiService';
+import { recognizeReceipt } from '../services/receiptRecognitionService';
 import { compressImage, generateThumbnail, formatFileSize } from '../services/imageService';
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
-import { submitProcurement, formatSubmitResult } from '../services/inventoryService';
+import { submitProcurement, formatSubmitResult, SubmitProgress } from '../services/inventoryService';
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../constants';
 import { GlassCard, Button, Input, AutocompleteInput } from './ui';
@@ -767,6 +768,7 @@ const TranscriptionBox: React.FC<{
 }
 
 // --- Summary Screen (Receipt Style) ---
+// v3.2: 添加进度状态和成功界面
 
 const SummaryScreen: React.FC<{
   items: ProcurementItem[];
@@ -776,13 +778,48 @@ const SummaryScreen: React.FC<{
   isSubmitting: boolean;
   submitMessage: string;
   submitError: string | null;
+  submitProgress: SubmitProgress | null;
+  countdown: number;
   onBack: () => void;
   onConfirm: () => void;
-}> = ({ items, supplier, notes, grandTotal, isSubmitting, submitMessage, submitError, onBack, onConfirm }) => {
+}> = ({ items, supplier, notes, grandTotal, isSubmitting, submitMessage, submitError, submitProgress, countdown, onBack, onConfirm }) => {
+  // v3.2: 成功界面 - 全屏覆盖
+  if (submitProgress === 'success' && countdown > 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center animate-slide-in px-6">
+        {/* 成功图标 */}
+        <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6"
+             style={{
+               background: 'rgba(107, 158, 138, 0.2)',
+               boxShadow: '0 0 60px rgba(107, 158, 138, 0.4)'
+             }}>
+          <div className="w-16 h-16 rounded-full bg-ios-green flex items-center justify-center">
+            <Icons.Check className="w-10 h-10 text-white" />
+          </div>
+        </div>
+
+        {/* 成功文字 */}
+        <h2 className="text-2xl font-bold text-ios-green mb-2">提交成功</h2>
+        <p className="text-secondary text-center mb-8">{submitMessage}</p>
+
+        {/* 倒计时 */}
+        <div className="text-center">
+          <p className="text-muted text-sm mb-2">{countdown} 秒后自动返回</p>
+          <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-ios-green rounded-full transition-all duration-1000 ease-linear"
+              style={{ width: `${(countdown / 3) * 100}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full animate-slide-in flex flex-col relative">
       <div className="px-6 py-5 flex items-center gap-4">
-        <button onClick={onBack} className="w-10 h-10 rounded-full bg-glass-bg backdrop-blur-glass border border-glass-border flex items-center justify-center text-secondary hover:bg-glass-bg-hover transition-colors">
+        <button onClick={onBack} disabled={isSubmitting} className={`w-10 h-10 rounded-full bg-glass-bg backdrop-blur-glass border border-glass-border flex items-center justify-center text-secondary transition-colors ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-glass-bg-hover'}`}>
            <Icons.ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="text-xl font-bold text-primary tracking-tight">确认单据</h2>
@@ -810,22 +847,21 @@ const SummaryScreen: React.FC<{
           </div>
         )}
 
-        {/* 成功消息框 - 显示在顶部 */}
-        {submitMessage && !submitError && (
-          <div className="mb-4 p-4 rounded-glass-lg border border-ios-green/30 animate-slide-in"
+        {/* 进度消息框 - 上传/保存过程中显示 */}
+        {isSubmitting && submitMessage && !submitError && submitProgress !== 'success' && (
+          <div className="mb-4 p-4 rounded-glass-lg border border-ios-blue/30 animate-slide-in"
                style={{
-                 background: 'rgba(107, 158, 138, 0.15)',
+                 background: 'rgba(91, 163, 192, 0.15)',
                  backdropFilter: 'blur(24px)',
                  WebkitBackdropFilter: 'blur(24px)',
-                 boxShadow: '0 4px 24px rgba(107, 158, 138, 0.2)'
+                 boxShadow: '0 4px 24px rgba(91, 163, 192, 0.2)'
                }}>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 rounded-full bg-ios-green/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Icons.Check className="w-4 h-4 text-ios-green" />
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                <div className="w-5 h-5 border-2 border-ios-blue/30 border-t-ios-blue rounded-full animate-spin" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-ios-green mb-1">提交成功</p>
-                <p className="text-sm text-white/90 whitespace-pre-wrap">{submitMessage}</p>
+                <p className="text-sm font-semibold text-ios-blue">{submitMessage}</p>
               </div>
             </div>
           </div>
@@ -1002,6 +1038,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState('');
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // v3.2: 进度状态和成功倒计时
+  const [submitProgress, setSubmitProgress] = useState<SubmitProgress | null>(null);
+  const [countdown, setCountdown] = useState<number>(0);
 
   // 获取认证信息
   // v1.9: 从 user 对象中正确提取 storeId 和 employeeId
@@ -1135,9 +1174,25 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
       setReceiptImage(newImage);
       console.log('[图片上传] 收货单图片处理完成!');
 
-      // TODO: AI 自动识别（当 aiAutoFill 开启时）
+      // v3.3: AI 自动识别（当 aiAutoFill 开启时）- 使用 Gemini 2.0 Flash
       if (aiAutoFill) {
-        console.log('[图片上传] AI 自动识别已开启（功能待实现）');
+        console.log('[图片上传] AI 自动识别已开启，调用 Gemini 2.0 Flash...');
+        try {
+          const result = await recognizeReceipt(compressed.data, compressed.mimeType);
+          if (result) {
+            console.log('[图片识别] 识别成功:', result);
+            // 使用与语音录入相同的表单填充逻辑
+            fillFormWithResult(result);
+            // 标记图片已识别
+            setReceiptImage(prev => prev ? { ...prev, recognized: true } : null);
+          } else {
+            console.warn('[图片识别] 识别失败，未返回结果');
+            alert('收货单识别失败，请手动输入或重试');
+          }
+        } catch (recognitionError) {
+          console.error('[图片识别] 识别出错:', recognitionError);
+          alert('收货单识别出错，请手动输入');
+        }
       }
 
     } catch (error) {
@@ -1283,14 +1338,34 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
 
     // 清除之前的错误信息
     setSubmitError(null);
+    setSubmitProgress(null);
+    setCountdown(0);
 
     // 提交到数据库
     if (storeId && employeeId) {
       setIsSubmitting(true);
-      setSubmitMessage('正在同步到数据库...');
+      setSubmitMessage('正在准备提交...');
 
       try {
-        const result = await submitProcurement(logData, storeId, employeeId);
+        // v3.2: 使用进度回调显示实时状态
+        const result = await submitProcurement(logData, storeId, employeeId, (progress) => {
+          setSubmitProgress(progress);
+          // 根据进度更新消息
+          switch (progress) {
+            case 'uploading_receipt':
+              setSubmitMessage('正在上传收货单图片...');
+              break;
+            case 'uploading_goods':
+              setSubmitMessage('正在上传货物图片...');
+              break;
+            case 'saving_data':
+              setSubmitMessage('正在保存数据...');
+              break;
+            case 'success':
+              setSubmitMessage('提交成功！');
+              break;
+          }
+        });
 
         // 检查是否提交成功
         if (!result.success) {
@@ -1299,38 +1374,41 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           setSubmitError(result.errors.join('\n'));
           setIsSubmitting(false);
           setSubmitMessage('');
+          setSubmitProgress(null);
           return; // 不继续执行后续操作
         }
 
-        // 提交成功：显示结果消息
-        let message = formatSubmitResult(result);
-
-        // v3.1: 如果有警告（如图片上传失败），显示警告信息
-        if (result.errors.length > 0) {
-          console.warn('[EntryForm] 提交成功但有警告:', result.errors);
-          message += '\n⚠️ 警告: ' + result.errors.join(', ');
-        }
-
+        // 提交成功：显示成功消息和倒计时
+        const message = formatSubmitResult(result);
         setSubmitMessage(message);
 
         // 保存到本地（仅在提交成功后）
         onSave(logData);
 
-        // 显示结果后清除状态并返回分类选择页
-        // 如果有警告，延长显示时间到 4 秒
-        const delay = result.errors.length > 0 ? 4000 : 2000;
-        setTimeout(() => {
-          setSubmitMessage('');
-          setIsSubmitting(false);
-          // 重置表单状态
-          setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
-          setSupplier('');
-          setSupplierOther('');
-          setNotes('');
-          setReceiptImage(null);
-          setGoodsImage(null);
-          setStep('CATEGORY'); // 返回分类选择页，方便继续录入
-        }, delay);
+        // v3.2: 开始 3 秒倒计时
+        setCountdown(3);
+        const countdownInterval = setInterval(() => {
+          setCountdown(prev => {
+            if (prev <= 1) {
+              clearInterval(countdownInterval);
+              // 倒计时结束，重置状态并返回分类选择页
+              setSubmitMessage('');
+              setIsSubmitting(false);
+              setSubmitProgress(null);
+              setCountdown(0);
+              // 重置表单状态
+              setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
+              setSupplier('');
+              setSupplierOther('');
+              setNotes('');
+              setReceiptImage(null);
+              setGoodsImage(null);
+              setStep('CATEGORY'); // 返回分类选择页，方便继续录入
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
 
       } catch (err) {
         // 捕获异常：显示错误，保留在当前页面
@@ -1339,6 +1417,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         setSubmitError(`数据库同步失败: ${errorMessage}`);
         setIsSubmitting(false);
         setSubmitMessage('');
+        setSubmitProgress(null);
       }
     } else {
       // 未登录：显示错误提示
@@ -1407,6 +1486,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           isSubmitting={isSubmitting}
           submitMessage={submitMessage}
           submitError={submitError}
+          submitProgress={submitProgress}
+          countdown={countdown}
           onBack={() => setStep('WORKSHEET')}
           onConfirm={handleSummaryConfirm}
         />
