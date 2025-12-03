@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v3.5 - 修复产品下拉选择不自动填入的 bug（React 状态竞态问题）
 // v3.4 - 收货单识别 UX 优化：上传后显示"AI识别"按钮，点击触发识别
 // v3.3 - 集成 Gemini 2.0 Flash 收货单图片识别，AI开关开启时自动识别填充表单
 // v3.2 - 优化提交 UI 反馈：进度提示 + 绿色成功界面 + 倒计时跳转
@@ -247,6 +248,7 @@ const WorksheetScreen: React.FC<{
   onSupplierOtherChange: (val: string) => void;
   onNotesChange: (val: string) => void;
   onItemChange: (index: number, field: keyof ProcurementItem, value: any) => void;
+  onProductSelect: (index: number, option: AutocompleteOption) => void;
   onAddItem: () => void;
   onRemoveItem: (index: number) => void;
   onReceiptImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -262,7 +264,7 @@ const WorksheetScreen: React.FC<{
 }> = ({
   items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImages, goodsImage,
   voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription,
-  onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onAddItem, onRemoveItem,
+  onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onProductSelect, onAddItem, onRemoveItem,
   onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAIRecognize,
   onVoiceStart, onVoiceStop, onTranscriptionChange, onSendTranscription, onReview
 }) => {
@@ -525,7 +527,7 @@ const WorksheetScreen: React.FC<{
                       minChars={1}
                       showDropdownButton={true}
                       getAllOptionsFn={getAllProductsAsOptions}
-                      onSelect={(option) => onItemChange(index, 'productId', option.id)}
+                      onSelect={(option) => onProductSelect(index, option)}
                     />
                     <button
                       onClick={() => onRemoveItem(index)}
@@ -1221,6 +1223,17 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     setItems(newItems);
   };
 
+  // 产品选择回调 - 同时设置 name 和 productId，避免 React 状态竞态问题
+  const handleProductSelect = (index: number, option: AutocompleteOption) => {
+    const newItems = [...items];
+    newItems[index] = {
+      ...newItems[index],
+      name: option.value,
+      productId: option.id as number
+    };
+    setItems(newItems);
+  };
+
   const addNewRow = () => {
     setItems([...items, { name: '', specification: '', quantity: 0, unit: '', unitPrice: 0, total: 0 }]);
   };
@@ -1581,6 +1594,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
           onSupplierOtherChange={setSupplierOther}
           onNotesChange={setNotes}
           onItemChange={handleItemChange}
+          onProductSelect={handleProductSelect}
           onAddItem={addNewRow}
           onRemoveItem={removeRow}
           onReceiptImageUpload={handleReceiptImageUpload}
