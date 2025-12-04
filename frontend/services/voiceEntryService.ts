@@ -1,4 +1,5 @@
 // 语音录入服务
+// v2.7 - 优化麦克风权限请求体验：预检权限、即时反馈、缓存状态
 // v2.6 - extractFromText 支持传入当前表单数据，实现修改/删除/添加功能
 // v2.5 - 语音识别与结构化提取分离：识别后返回文本供用户编辑，点击发送后才调用 Qwen
 // v2.4: 修复竞态条件 - 在 getUserMedia 等待期间 WebSocket 状态可能变化
@@ -36,7 +37,11 @@ export interface VoiceMessage {
 }
 
 // 录音状态
-export type RecordingStatus = 'idle' | 'recording' | 'processing' | 'completed' | 'error';
+// v2.7: 添加 'preparing' 状态表示正在准备中
+export type RecordingStatus = 'idle' | 'preparing' | 'recording' | 'processing' | 'completed' | 'error';
+
+// 权限状态
+export type PermissionStatus = 'unknown' | 'granted' | 'denied' | 'prompt';
 
 // 回调函数类型
 // v2.5: 添加 onTextFinal 回调（识别完成，可编辑后发送）
@@ -58,6 +63,9 @@ class VoiceEntryService {
   private callbacks: VoiceEntryCallbacks = {};
   private status: RecordingStatus = 'idle';
   private audioChunks: Blob[] = [];
+  // v2.7: 权限状态缓存
+  private micPermissionStatus: PermissionStatus = 'unknown';
+  private permissionCheckPromise: Promise<PermissionStatus> | null = null;
 
   /**
    * 检查浏览器是否支持语音录入
@@ -86,15 +94,107 @@ class VoiceEntryService {
   }
 
   /**
-   * 开始录音 - 实时流式识别（默认方法）
+   * v2.7: 检查麦克风权限状态（异步，支持 Permissions API）
+   * 使用缓存避免重复查询，返回权限状态
+   */
+  async checkMicrophonePermission(): Promise<PermissionStatus> {
+    // 如果已有缓存且不是 'unknown'，直接返回
+    if (this.micPermissionStatus !== 'unknown') {
+      console.log('[VoiceEntry] 使用缓存的权限状态:', this.micPermissionStatus);
+      return this.micPermissionStatus;
+    }
+
+    // 如果正在检查中，等待之前的 Promise
+    if (this.permissionCheckPromise) {
+      console.log('[VoiceEntry] 等待进行中的权限检查...');
+      return this.permissionCheckPromise;
+    }
+
+    // 创建新的检查 Promise
+    this.permissionCheckPromise = (async () => {
+      try {
+        // 优先使用 Permissions API（更快，不触发权限弹窗）
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+            console.log('[VoiceEntry] Permissions API 返回状态:', result.state);
+
+            // 映射 Permissions API 状态到我们的类型
+            const status: PermissionStatus = result.state as PermissionStatus;
+            this.micPermissionStatus = status;
+
+            // 监听权限变化
+            result.onchange = () => {
+              const newStatus = result.state as PermissionStatus;
+              console.log('[VoiceEntry] 权限状态变化:', this.micPermissionStatus, '→', newStatus);
+              this.micPermissionStatus = newStatus;
+            };
+
+            return status;
+          } catch (permError) {
+            // Safari 不支持 microphone 权限查询，降级到 getUserMedia
+            console.warn('[VoiceEntry] Permissions API 不支持，降级到 getUserMedia 测试');
+          }
+        }
+
+        // 降级方案：尝试请求麦克风（会触发权限弹窗）
+        // 注意：这是阻塞操作，用户需要响应弹窗
+        console.log('[VoiceEntry] 降级方案：请求麦克风权限...');
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(track => track.stop()); // 立即停止
+
+        this.micPermissionStatus = 'granted';
+        console.log('[VoiceEntry] 麦克风权限已授予');
+        return 'granted';
+
+      } catch (error: any) {
+        console.error('[VoiceEntry] 权限检查失败:', error);
+
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+          this.micPermissionStatus = 'denied';
+          return 'denied';
+        }
+
+        // 其他错误视为未知
+        this.micPermissionStatus = 'unknown';
+        return 'unknown';
+      } finally {
+        this.permissionCheckPromise = null;
+      }
+    })();
+
+    return this.permissionCheckPromise;
+  }
+
+  /**
+   * v2.7: 重置权限缓存（用于用户手动刷新权限状态）
+   */
+  resetPermissionCache(): void {
+    this.micPermissionStatus = 'unknown';
+    console.log('[VoiceEntry] 权限缓存已重置');
+  }
+
+  /**
+   * v2.7: 开始录音 - 优化权限请求体验
+   * 立即显示准备状态，并行处理权限检查和 WebSocket 连接
    */
   async startRecording(): Promise<void> {
-    if (this.status === 'recording') {
-      console.warn('[VoiceEntry] 已经在录音中');
+    if (this.status === 'recording' || this.status === 'preparing') {
+      console.warn('[VoiceEntry] 已经在录音/准备中');
       return;
     }
 
+    // v2.7: 立即更新状态为"准备中"，给用户即时反馈
+    this.updateStatus('preparing', '正在准备...');
+
     try {
+      // v2.7: 先检查权限状态（使用缓存或 Permissions API，非阻塞）
+      const permissionStatus = await this.checkMicrophonePermission();
+
+      if (permissionStatus === 'denied') {
+        throw new Error('麦克风权限已被拒绝，请在浏览器设置中允许麦克风访问');
+      }
+
       // v2.1: 如果 WebSocket 已连接（连续录音），直接开始新的录音会话
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         console.log('[VoiceEntry] 复用现有 WebSocket 连接');
@@ -102,14 +202,21 @@ class VoiceEntryService {
         return;
       }
 
-      // 首次连接 WebSocket
+      // v2.7: 首次连接 WebSocket（同时处理权限请求）
       this.ws = new WebSocket(WS_URL);
+      console.log('[VoiceEntry] WebSocket 开始连接...');
 
       this.ws.onopen = async () => {
         console.log('[VoiceEntry] WebSocket onopen 触发，状态:', this.ws?.readyState);
 
-        // v2.4: 等待 WebSocket 真正处于 OPEN 状态（某些浏览器 onopen 触发时状态可能还未更新）
+        // v2.4: 等待 WebSocket 真正处于 OPEN 状态
         await this.waitForWebSocketReady();
+
+        // v2.7: 检查状态是否还是 preparing（用户可能已取消）
+        if (this.status !== 'preparing') {
+          console.log('[VoiceEntry] 用户已取消录音，跳过启动');
+          return;
+        }
 
         if (this.ws?.readyState === WebSocket.OPEN) {
           await this.startNewRecordingSession();
@@ -132,10 +239,15 @@ class VoiceEntryService {
 
       this.ws.onclose = () => {
         console.log('[VoiceEntry] WebSocket 已关闭');
-        // v2.1: 仅在非正常状态下清理资源（避免结果接收后自动关闭）
-        if (this.status === 'recording' || this.status === 'processing') {
+        // v2.1: 仅在非正常状态下清理资源
+        if (this.status === 'recording' || this.status === 'processing' || this.status === 'preparing') {
           this.cleanup();
-          this.updateStatus('error', 'WebSocket 意外关闭');
+          // v2.7: 准备状态被中断时不显示错误（可能是用户取消）
+          if (this.status !== 'preparing') {
+            this.updateStatus('error', 'WebSocket 意外关闭');
+          } else {
+            this.updateStatus('idle');
+          }
         }
       };
 

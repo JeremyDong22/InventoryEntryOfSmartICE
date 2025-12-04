@@ -1,8 +1,10 @@
 /**
  * Supabase 数据库服务
+ * v3.2 - 集成 PreloadDataContext 缓存机制，实现数据预加载
  * v3.1 - 添加获取全部产品/供应商函数（用于下拉选择器）
  *
  * 变更历史：
+ * - v3.2: 与 PreloadDataContext 共享缓存，支持应用启动时预加载数据
  * - v3.1: 新增 getAllProducts、getAllSuppliers 用于下拉列表展示全部选项
  * - v3.0: 简化 ims_material_price 表，移除 SKU，改为直接关联 material
  * - v2.3: 新增 searchUnits 函数用于单位自动完成输入
@@ -154,7 +156,7 @@ export async function getProducts(categoryId?: number): Promise<Product[]> {
 }
 
 /**
- * 模糊匹配产品
+ * 模糊匹配产品（用于搜索下拉）
  */
 export async function matchProduct(name: string): Promise<Product[]> {
   // 使用 ILIKE 进行模糊匹配
@@ -171,6 +173,27 @@ export async function matchProduct(name: string): Promise<Product[]> {
   }
 
   return data || [];
+}
+
+/**
+ * 精确匹配产品（用于提交验证）
+ * v3.3 - 新增：验证产品名称是否精确存在于数据库
+ */
+export async function exactMatchProduct(name: string): Promise<Product | null> {
+  // 精确匹配名称（忽略大小写）
+  const { data, error } = await supabase
+    .from('ims_material')
+    .select('*')
+    .ilike('name', name.trim())
+    .eq('is_active', true)
+    .limit(1);
+
+  if (error) {
+    console.error('精确匹配产品失败:', error);
+    throw error;
+  }
+
+  return data && data.length > 0 ? data[0] : null;
 }
 
 /**
@@ -349,10 +372,36 @@ export interface AutocompleteOption {
   sublabel?: string;
 }
 
-// 数据缓存
+// ============ v3.2: 数据缓存（与 PreloadDataContext 共享） ============
+
+// 数据缓存 - 可从外部注入（PreloadDataContext 使用）
 let suppliersCache: Supplier[] | null = null;
 let productsCache: Product[] | null = null;
 let unitsCache: Array<{id: number, code: string, name: string}> | null = null;
+
+/**
+ * 注入供应商缓存（由 PreloadDataContext 调用）
+ */
+export function injectSuppliersCache(data: Supplier[]): void {
+  suppliersCache = data;
+  console.log(`[SupabaseService] 注入供应商缓存: ${data.length} 条`);
+}
+
+/**
+ * 注入产品缓存（由 PreloadDataContext 调用）
+ */
+export function injectProductsCache(data: Product[]): void {
+  productsCache = data;
+  console.log(`[SupabaseService] 注入产品缓存: ${data.length} 条`);
+}
+
+/**
+ * 注入单位缓存（由 PreloadDataContext 调用）
+ */
+export function injectUnitsCache(data: Array<{id: number, code: string, name: string}>): void {
+  unitsCache = data;
+  console.log(`[SupabaseService] 注入单位缓存: ${data.length} 条`);
+}
 
 /**
  * 搜索供应商（支持汉字 + 拼音首字母）

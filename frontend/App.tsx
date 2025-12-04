@@ -1,3 +1,6 @@
+// v4.0.1 - 修复预加载无限循环，改为后台静默加载不阻塞UI
+// v4.0.0 - 添加上传队列历史记录页面（显示队列状态、支持失败重试）
+// v3.5.0 - 集成 PreloadDataContext，实现下拉框数据预加载
 // v3.4.0 - 添加修改密码页面
 // v3.3.0 - 仪表板数据从数据库获取
 // v3.2.0 - EntryForm 欢迎页传递菜单回调
@@ -8,14 +11,18 @@ import { Dashboard } from './components/Dashboard';
 import { EntryForm } from './components/EntryForm';
 import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
+import { QueueHistoryPage } from './components/QueueHistoryPage';
 import { DailyLog, AppView } from './types';
 import { Icons } from './constants';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { PreloadDataProvider, usePreloadData } from './contexts/PreloadDataContext';
 import { getPurchaseLogs } from './services/dashboardService';
 
 // 主应用内容（需要在 AuthProvider 内部使用）
 const AppContent: React.FC = () => {
   const { user, isAuthenticated, isLoading } = useAuth();
+  // 预加载在后台静默进行，不阻塞 UI
+  const { error: preloadError } = usePreloadData();
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
@@ -44,13 +51,21 @@ const AppContent: React.FC = () => {
   // 从认证上下文获取用户名
   const CURRENT_USER_NAME = user?.name || "用户";
 
-  // 加载中显示
+  // 仅认证加载时显示 loading（预加载在后台静默进行）
   if (isLoading) {
     return (
       <div className="fixed inset-0 flex items-center justify-center">
-        <div className="text-white text-xl">加载中...</div>
+        <div className="text-center">
+          <div className="w-16 h-16 mx-auto mb-4 border-4 border-white/20 border-t-white rounded-full animate-spin" />
+          <div className="text-white text-xl">加载中...</div>
+        </div>
       </div>
     );
+  }
+
+  // 预加载错误仅记录日志，不阻塞 UI
+  if (preloadError) {
+    console.warn('[App] 数据预加载失败（后台静默），下拉框将按需加载:', preloadError);
   }
 
   // 未登录显示登录页面
@@ -78,40 +93,6 @@ const AppContent: React.FC = () => {
     setCurrentView(AppView.DASHBOARD);
   };
 
-  const getCategoryLabel = (id: string) => {
-     switch(id) {
-       case 'Meat': return '肉类';
-       case 'Vegetables': return '蔬果';
-       case 'Dry Goods': return '干杂';
-       case 'Alcohol': return '酒水';
-       case 'Consumables': return '低耗';
-       default: return '其他';
-     }
-  };
-
-  const HistoryView = () => (
-    <div className="space-y-4 animate-slide-in pb-20">
-      <h1 className="text-3xl font-bold text-primary mb-6">历史记录</h1>
-      {[...logs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((log, idx) => (
-        <div key={log.id} className="glass-card p-4 flex justify-between items-center active:opacity-90 transition-colors cursor-pointer">
-          <div className="flex items-center gap-4">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${log.category === 'Meat' ? 'bg-stamp-red' : log.category === 'Vegetables' ? 'bg-faded-steel' : 'bg-harbor-blue'}`}>
-               <span className="text-xs font-bold">{getCategoryLabel(log.category).substring(0,2)}</span>
-            </div>
-            <div>
-              <h3 className="text-primary font-medium">{log.supplier}</h3>
-              <p className="text-sm text-secondary">{new Date(log.date).toLocaleDateString('zh-CN')}</p>
-            </div>
-          </div>
-          <div className="text-right">
-              <p className="text-harbor-blue font-bold">¥{log.totalCost.toFixed(2)}</p>
-              <p className="text-xs text-muted">{log.items.length} 物品</p>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
   // 已登录显示主应用
   return (
     <div className="fixed inset-0 flex text-primary font-sans overflow-hidden">
@@ -134,7 +115,7 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY || currentView === AppView.CHANGE_PASSWORD ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
+        <main className={`flex-1 ${currentView === AppView.DASHBOARD ? 'overflow-hidden' : 'overflow-y-auto'} ${currentView === AppView.NEW_ENTRY || currentView === AppView.CHANGE_PASSWORD || currentView === AppView.HISTORY ? 'p-0' : 'p-4 md:p-8'} max-w-5xl mx-auto w-full`}>
             {currentView === AppView.DASHBOARD && (
               logsLoading ? (
                 <div className="h-full flex items-center justify-center">
@@ -145,7 +126,7 @@ const AppContent: React.FC = () => {
               )
             )}
             {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} onOpenMenu={() => setSidebarOpen(true)} />}
-            {currentView === AppView.HISTORY && <HistoryView />}
+            {currentView === AppView.HISTORY && <QueueHistoryPage onBack={() => setCurrentView(AppView.DASHBOARD)} />}
             {currentView === AppView.CHANGE_PASSWORD && <ChangePasswordPage onBack={() => setCurrentView(AppView.DASHBOARD)} />}
         </main>
       </div>
@@ -153,11 +134,13 @@ const AppContent: React.FC = () => {
   );
 };
 
-// 根组件：提供 AuthProvider
+// 根组件：提供 AuthProvider + PreloadDataProvider
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <PreloadDataProvider>
+        <AppContent />
+      </PreloadDataProvider>
     </AuthProvider>
   );
 };

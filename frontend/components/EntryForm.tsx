@@ -1,4 +1,8 @@
 // EntryForm - 采购录入表单
+// v4.1 - 完整表单验证（供应商、单位、产品精确匹配）+ 提交直接加入队列
+// v4.0 - 添加上传队列功能：支持"加入队列"提交模式，用户无需等待上传完成
+// v3.9 - 优化麦克风权限请求体验：立即显示准备状态，支持 preparing 状态
+// v3.8 - 表单提交前验证物品名称是否存在于数据库（优化 UX，避免到总结页才发现错误）
 // v3.7 - 收货单和货物照片必填验证 + 移动端（iOS/Android）相机相册兼容性优化
 // v3.6 - 调整UI顺序：图片上传在前，供应商/备注在后，避免AI识别覆盖用户手动输入
 // v3.5 - 修复产品下拉选择不自动填入的 bug（React 状态竞态问题）
@@ -20,11 +24,12 @@ import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types
 import { recognizeReceipt } from '../services/receiptRecognitionService';
 import { compressImage, generateThumbnail, formatFileSize } from '../services/imageService';
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
-import { submitProcurement, formatSubmitResult, SubmitProgress } from '../services/inventoryService';
+import { SubmitProgress } from '../services/inventoryService';
+import { addToUploadQueue } from '../services/uploadQueueService';
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../constants';
 import { GlassCard, Button, Input, AutocompleteInput } from './ui';
-import { searchSuppliers, searchProducts, getAllProductsAsOptions, getAllSuppliersAsOptions } from '../services/supabaseService';
+import { searchSuppliers, searchProducts, getAllProductsAsOptions, getAllSuppliersAsOptions, exactMatchProduct } from '../services/supabaseService';
 import type { AutocompleteOption } from '../services/supabaseService';
 
 interface EntryFormProps {
@@ -617,7 +622,7 @@ const WorksheetScreen: React.FC<{
             {/* v1.7: 提交按钮移到这里，和物品列表同层级 */}
             <button
               onClick={onReview}
-              disabled={voiceStatus === 'recording' || voiceStatus === 'processing'}
+              disabled={voiceStatus === 'recording' || voiceStatus === 'processing' || voiceStatus === 'preparing'}
               className="w-full py-4 mt-4 rounded-glass-xl text-white font-semibold text-base transition-all active:scale-[0.98] border border-white/15 disabled:opacity-40 flex items-center justify-center gap-2"
               style={{
                 background: 'linear-gradient(135deg, rgba(91,163,192,0.3) 0%, rgba(91,163,192,0.15) 100%)',
@@ -671,13 +676,13 @@ const WorksheetScreen: React.FC<{
                    </svg>
                  </button>
                ) : (
-                 /* Microphone Button */
+                 /* Microphone Button - v3.9: 支持 preparing 状态 */
                  <button
                    onClick={onVoiceStart}
-                   disabled={isAnalyzing || voiceStatus === 'processing'}
+                   disabled={isAnalyzing || voiceStatus === 'processing' || voiceStatus === 'preparing'}
                    className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40 flex-shrink-0"
                  >
-                   {voiceStatus === 'processing' ? (
+                   {(voiceStatus === 'processing' || voiceStatus === 'preparing') ? (
                      <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
                    ) : (
                      <Icons.Microphone className="w-5 h-5" />
@@ -764,12 +769,14 @@ const TranscriptionBox: React.FC<{
               ? '正在聆听...'
               : voiceStatus === 'processing'
                 ? '正在处理...'
-                : '尝试用AI帮忙补充或修改，您可以说：请帮我把牛肋条的单位改成kg，或请帮我添加一个猪五花，20斤，一斤23块'
+                : voiceStatus === 'preparing'
+                  ? '正在准备...'
+                  : '尝试用AI帮忙补充或修改，您可以说：请帮我把牛肋条的单位改成kg，或请帮我添加一个猪五花，20斤，一斤23块'
           }
-          disabled={voiceStatus === 'recording' || voiceStatus === 'processing'}
+          disabled={voiceStatus === 'recording' || voiceStatus === 'processing' || voiceStatus === 'preparing'}
           rows={1}
           className={`w-full min-h-[44px] max-h-[120px] rounded-xl px-3 py-2.5 text-sm text-white/90 placeholder-white/30 resize-none outline-none transition-all ${
-            voiceStatus === 'recording' ? 'bg-transparent' : 'bg-white/8'
+            voiceStatus === 'recording' || voiceStatus === 'preparing' ? 'bg-transparent' : 'bg-white/8'
           }`}
           style={{
             background: voiceStatus === 'recording' || transcriptionText
@@ -969,18 +976,19 @@ const SummaryScreen: React.FC<{
         <p className="text-center text-muted text-xs mt-6">请核对以上信息，确认无误后提交入库。</p>
       </div>
 
+      {/* v4.1: 只保留一个确认提交按钮（直接加入队列） */}
       <div className="fixed bottom-6 left-4 right-4 z-50 safe-area-bottom">
          <button
            onClick={onConfirm}
            disabled={isSubmitting}
-           className={`w-full py-4 rounded-2xl text-white font-semibold text-lg transition-all border border-white/10 flex items-center justify-center gap-2 ${
-             isSubmitting ? 'opacity-60 cursor-not-allowed' : 'active:scale-[0.98] hover:bg-white/5'
+           className={`w-full py-4 rounded-2xl text-white font-semibold text-lg transition-all border border-ios-blue/30 flex items-center justify-center gap-2 ${
+             isSubmitting ? 'opacity-60 cursor-not-allowed' : 'active:scale-[0.98] hover:border-ios-blue/50'
            }`}
            style={{
-             background: 'rgba(30, 30, 35, 0.75)',
+             background: 'linear-gradient(135deg, rgba(91,163,192,0.3) 0%, rgba(91,163,192,0.15) 100%)',
              backdropFilter: 'blur(40px) saturate(180%)',
              WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+             boxShadow: '0 8px 32px rgba(91,163,192,0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
            }}
          >
             {isSubmitting ? (
@@ -991,7 +999,7 @@ const SummaryScreen: React.FC<{
             ) : (
               <>
                 <Icons.Check className="w-5 h-5" />
-                <span>确认入库</span>
+                <span>确认提交</span>
               </>
             )}
          </button>
@@ -1141,6 +1149,16 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
   const storeId = user?.store_id || null;
   const employeeId = user?.id || null;
 
+  // v3.9: 页面加载时预检麦克风权限（非阻塞）
+  useEffect(() => {
+    // 静默检查权限，不触发权限弹窗
+    voiceEntryService.checkMicrophonePermission().then(status => {
+      console.log('[EntryForm] 麦克风权限预检完成:', status);
+    }).catch(err => {
+      console.log('[EntryForm] 麦克风权限预检失败（忽略）:', err);
+    });
+  }, []);
+
   // 初始化语音服务回调
   // v1.8: 识别完成后仅显示文本，不自动填充，需点击发送按钮
   useEffect(() => {
@@ -1149,8 +1167,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         setVoiceStatus(status);
         setVoiceMessage(message || '');
 
-        // 显示转录面板
-        if (status === 'recording' || status === 'processing') {
+        // v3.9: 显示转录面板（包括 preparing 状态）
+        if (status === 'recording' || status === 'processing' || status === 'preparing') {
           setShowTranscription(true);
           if (status === 'recording') {
             setTranscriptionText('');
@@ -1419,8 +1437,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
 
   const calculateGrandTotal = () => items.reduce((acc, curr) => acc + curr.total, 0);
 
-  const handleWorksheetSubmit = () => {
-    // v3.7: 图片必填验证 - 收货单和货物照片都是必填项
+  const handleWorksheetSubmit = async () => {
+    // v4.1: 完整表单验证 - 图片、供应商、物品、单位、产品名称
+
+    // 1. 图片必填验证
     if (receiptImages.length === 0) {
         alert('请上传收货单照片（必填）');
         return;
@@ -1431,7 +1451,13 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         return;
     }
 
-    // 检查是否有物品
+    // 2. 供应商必填验证
+    if (!supplier || supplier.trim() === '') {
+        alert('请选择或输入供应商（必填）');
+        return;
+    }
+
+    // 3. 检查是否有物品
     if (items.length === 0) {
         alert("请至少录入一项物品");
         return;
@@ -1451,7 +1477,15 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         return;
     }
 
-    // 检查是否有价格为空或为0
+    // 4. 单位必填验证
+    const missingUnitItems = validItems.filter(i => !i.unit || i.unit.trim() === '');
+    if (missingUnitItems.length > 0) {
+        const names = missingUnitItems.map(i => `"${i.name}"`).join('、');
+        alert(`请填写单位（以下物品缺少单位：${names}）`);
+        return;
+    }
+
+    // 5. 检查是否有价格为空或为0
     const invalidPriceItems = validItems.filter(i => !i.unitPrice || i.unitPrice <= 0);
     if (invalidPriceItems.length > 0) {
         const names = invalidPriceItems.map(i => i.name).join('、');
@@ -1459,7 +1493,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         return;
     }
 
-    // 检查是否有数量为空或为0
+    // 6. 检查是否有数量为空或为0
     const invalidQuantityItems = validItems.filter(i => !i.quantity || i.quantity <= 0);
     if (invalidQuantityItems.length > 0) {
         const names = invalidQuantityItems.map(i => i.name).join('、');
@@ -1467,7 +1501,41 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
         return;
     }
 
-    // v3.6: 进入 SUMMARY 页面前清除之前的提交状态（错误信息等）
+    // 7. v4.1: 验证物品名称是否精确存在于数据库（避免"1"匹配到"红油"的问题）
+    const unmatchedProducts: string[] = [];
+    for (const item of validItems) {
+        // 如果已有 productId（从下拉选择），则跳过验证
+        if (item.productId) {
+            continue;
+        }
+
+        // 使用精确匹配验证产品
+        try {
+            const product = await exactMatchProduct(item.name);
+            if (!product) {
+                // 产品不存在
+                unmatchedProducts.push(item.name);
+            }
+        } catch (error) {
+            console.error(`[验证] 产品精确匹配失败: ${item.name}`, error);
+            // 网络错误时也算作未匹配（安全起见）
+            unmatchedProducts.push(item.name);
+        }
+    }
+
+    // 如果有未匹配的产品，显示错误提示并阻止提交
+    if (unmatchedProducts.length > 0) {
+        const productList = unmatchedProducts.map(name => `"${name}"`).join('、');
+        const message = `以下物品在系统中未找到：
+
+${productList}
+
+请从下拉列表中选择已有物品，或联系管理员添加新物品。`;
+        alert(message);
+        return;
+    }
+
+    // v3.6: 进入 SUMMARY 页面前清除之前的提交状态
     setSubmitError(null);
     setSubmitMessage('');
     setSubmitProgress(null);
@@ -1477,10 +1545,12 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
     setStep('SUMMARY');
   };
 
-  const handleSummaryConfirm = async () => {
+
+  // v4.1: 确认提交直接加入队列（后台上传，用户无需等待）
+  const handleSummaryConfirm = () => {
     const validItems = items.filter(i => i.name.trim() !== '');
 
-    // v3.0: 构建日志数据（使用新的字段结构）
+    // 构建日志数据
     const logData: Omit<DailyLog, 'id'> = {
       date: new Date().toISOString(),
       category: selectedCategory,
@@ -1494,95 +1564,43 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMe
       goodsImage: goodsImage || undefined,
     };
 
-    // 清除之前的错误信息
-    setSubmitError(null);
-    setSubmitProgress(null);
-    setCountdown(0);
-
-    // 提交到数据库
+    // 添加到队列
     if (storeId && employeeId) {
-      setIsSubmitting(true);
-      setSubmitMessage('正在准备提交...');
+      const queueId = addToUploadQueue(logData, storeId, employeeId);
+      console.log(`[队列] 任务已加入队列: ${queueId}`);
 
-      try {
-        // v3.2: 使用进度回调显示实时状态
-        const result = await submitProcurement(logData, storeId, employeeId, (progress) => {
-          setSubmitProgress(progress);
-          // 根据进度更新消息
-          switch (progress) {
-            case 'uploading_receipt':
-              setSubmitMessage('正在上传收货单图片...');
-              break;
-            case 'uploading_goods':
-              setSubmitMessage('正在上传货物图片...');
-              break;
-            case 'saving_data':
-              setSubmitMessage('正在保存数据...');
-              break;
-            case 'success':
-              setSubmitMessage('提交成功！');
-              break;
-          }
-        });
+      // 显示成功提示
+      setSubmitProgress('success');
+      setSubmitMessage('已提交，可在上传记录中查看状态');
+      setCountdown(2);
 
-        // 检查是否提交成功
-        if (!result.success) {
-          // 提交完全失败：显示错误，保留在当前页面
-          console.error('[EntryForm] 数据库提交失败:', result.errors);
-          setSubmitError(result.errors.join('\n'));
-          setIsSubmitting(false);
-          setSubmitMessage('');
-          setSubmitProgress(null);
-          return; // 不继续执行后续操作
-        }
-
-        // 提交成功：显示成功消息和倒计时
-        const message = formatSubmitResult(result);
-        setSubmitMessage(message);
-
-        // v3.2: 开始 3 秒倒计时
-        setCountdown(3);
-        countdownIntervalRef.current = setInterval(() => {
-          setCountdown(prev => {
-            if (prev <= 1) {
-              if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-                countdownIntervalRef.current = null;
-              }
-              // 倒计时结束，重置状态
-              setSubmitMessage('');
-              setIsSubmitting(false);
-              setSubmitProgress(null);
-              setCountdown(0);
-              // 重置表单状态
-              setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
-              setSupplier('');
-              setSupplierOther('');
-              setNotes('');
-              setReceiptImages([]);
-              setGoodsImage(null);
-              // 倒计时结束后调用 onSave，触发页面跳转
-              onSave(logData);
-              return 0;
+      // 2 秒后返回
+      countdownIntervalRef.current = setInterval(() => {
+        setCountdown(prev => {
+          if (prev <= 1) {
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
             }
-            return prev - 1;
-          });
-        }, 1000);
-
-      } catch (err) {
-        // 捕获异常：显示错误，保留在当前页面
-        console.error('[EntryForm] 提交异常:', err);
-        const errorMessage = err instanceof Error ? err.message : '未知错误';
-        setSubmitError(`数据库同步失败: ${errorMessage}`);
-        setIsSubmitting(false);
-        setSubmitMessage('');
-        setSubmitProgress(null);
-      }
+            // 重置表单状态
+            setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
+            setSupplier('');
+            setSupplierOther('');
+            setNotes('');
+            setReceiptImages([]);
+            setGoodsImage(null);
+            setSubmitMessage('');
+            setSubmitProgress(null);
+            setCountdown(0);
+            // 跳转回首页
+            onSave(logData);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     } else {
-      // 未登录：显示错误提示
-      console.warn('[EntryForm] 未登录，无法提交数据库');
-      setSubmitError('未登录，请先登录后再提交数据');
-      setIsSubmitting(false);
+      alert('未登录，请先登录');
     }
   };
 
