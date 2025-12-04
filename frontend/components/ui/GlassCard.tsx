@@ -1,3 +1,7 @@
+/**
+ * GlassCard - 毛玻璃卡片组件
+ * v1.1 - 添加 onClick 支持
+ */
 import { clsx } from 'clsx';
 
 interface GlassCardProps {
@@ -6,6 +10,7 @@ interface GlassCardProps {
   padding?: 'none' | 'sm' | 'md' | 'lg';
   variant?: 'default' | 'elevated' | 'subtle';
   interactive?: boolean;
+  onClick?: () => void;
 }
 
 const paddingMap = {
@@ -27,15 +32,17 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   padding = 'md',
   variant = 'default',
   interactive = false,
+  onClick,
 }) => {
   return (
     <div
       className={clsx(
         variantMap[variant],
         paddingMap[padding],
-        interactive && 'cursor-pointer active:scale-[0.98]',
+        (interactive || onClick) && 'cursor-pointer active:scale-[0.98]',
         className
       )}
+      onClick={onClick}
     >
       {children}
     </div>

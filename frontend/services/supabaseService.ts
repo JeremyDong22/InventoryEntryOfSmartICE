@@ -1,5 +1,6 @@
 /**
  * Supabase 数据库服务
+ * v3.3 - 添加删除采购记录功能
  * v3.2 - 集成 PreloadDataContext 缓存机制，实现数据预加载
  * v3.1 - 添加获取全部产品/供应商函数（用于下拉选择器）
  *
@@ -538,4 +539,122 @@ export async function getAllSuppliersAsOptions(): Promise<AutocompleteOption[]> 
     value: s.name,
     sublabel: s.contact_person || undefined,
   }));
+}
+
+// ============ v3.3: 历史记录查询（分页懒加载） ============
+
+/**
+ * 采购历史记录项
+ */
+export interface ProcurementHistoryItem {
+  id: number;
+  item_name: string;
+  supplier_name: string | null;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_amount: number;
+  price_date: string;
+  notes: string | null;
+  status: string;
+  receipt_image: string | null;
+  goods_image: string | null;
+  created_at: string;
+}
+
+/**
+ * 获取采购历史记录（分页）
+ * @param page 页码（从0开始）
+ * @param pageSize 每页数量
+ * @param storeId 可选门店ID过滤
+ * @returns 历史记录列表
+ */
+export async function getProcurementHistory(
+  page: number = 0,
+  pageSize: number = 20,
+  storeId?: string
+): Promise<{ data: ProcurementHistoryItem[]; hasMore: boolean; total: number }> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from('ims_material_price')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (storeId) {
+    query = query.eq('store_id', storeId);
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    console.error('获取采购历史失败:', error);
+    throw error;
+  }
+
+  const total = count || 0;
+  const hasMore = (from + (data?.length || 0)) < total;
+
+  return {
+    data: (data || []).map(item => ({
+      id: item.id,
+      item_name: item.item_name,
+      supplier_name: item.supplier_name,
+      quantity: parseFloat(item.quantity) || 0,
+      unit: item.unit,
+      unit_price: parseFloat(item.unit_price) || 0,
+      total_amount: parseFloat(item.total_amount) || 0,
+      price_date: item.price_date,
+      notes: item.notes,
+      status: item.status || 'completed',
+      receipt_image: item.receipt_image,
+      goods_image: item.goods_image,
+      created_at: item.created_at,
+    })),
+    hasMore,
+    total,
+  };
+}
+
+/**
+ * 获取采购统计
+ */
+export async function getProcurementStats(storeId?: string): Promise<{ total: number; count: number }> {
+  let query = supabase
+    .from('ims_material_price')
+    .select('total_amount');
+
+  if (storeId) {
+    query = query.eq('store_id', storeId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('获取采购统计失败:', error);
+    return { total: 0, count: 0 };
+  }
+
+  const total = (data || []).reduce((sum, item) => sum + (parseFloat(item.total_amount) || 0), 0);
+  return { total, count: data?.length || 0 };
+}
+
+/**
+ * 删除采购记录
+ * v3.3 - 新增删除功能
+ */
+export async function deleteProcurementRecord(id: number): Promise<boolean> {
+  const { error } = await supabase
+    .from('ims_material_price')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('删除采购记录失败:', error);
+    throw error;
+  }
+
+  return true;
 }
