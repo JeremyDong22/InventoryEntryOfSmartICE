@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v4.2 - 添加 userNickname 支持，用于更亲切的问候语
 // v4.1 - 完整表单验证（供应商、单位、产品精确匹配）+ 提交直接加入队列
 // v4.0 - 添加上传队列功能：支持"加入队列"提交模式，用户无需等待上传完成
 // v3.9 - 优化麦克风权限请求体验：立即显示准备状态，支持 preparing 状态
@@ -35,6 +36,7 @@ import type { AutocompleteOption } from '../services/supabaseService';
 interface EntryFormProps {
   onSave: (log: Omit<DailyLog, 'id'>) => void;
   userName: string;
+  userNickname?: string;  // 昵称，用于更亲切的问候语
   onOpenMenu?: () => void;
 }
 
@@ -95,7 +97,7 @@ const MOCK_PRESETS: Record<string, { supplier: string; notes: string; items: Pro
 
 // --- Welcome Screen (Minimalist Typography) ---
 
-const WelcomeScreen: React.FC<{ userName: string; onStart: () => void; onOpenMenu?: () => void }> = ({ userName, onStart, onOpenMenu }) => {
+const WelcomeScreen: React.FC<{ userName: string; userNickname?: string; onStart: () => void; onOpenMenu?: () => void }> = ({ userName, userNickname, onStart, onOpenMenu }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -165,7 +167,7 @@ const WelcomeScreen: React.FC<{ userName: string; onStart: () => void; onOpenMen
                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
                  }}>
               <p className="text-base text-white font-medium whitespace-nowrap">
-                {userName}，今日的工作就拜托你了
+                {userNickname || userName}，今日的工作就拜托你了
               </p>
             </div>
          </div>
@@ -1010,7 +1012,7 @@ const SummaryScreen: React.FC<{
 
 // --- Main Container ---
 
-export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, onOpenMenu }) => {
+export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNickname, onOpenMenu }) => {
   const [step, setStep] = useState<EntryStep>('WELCOME');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('Meat');
   const [supplier, setSupplier] = useState('');
@@ -1641,6 +1643,7 @@ ${productList}
       {step === 'WELCOME' && (
         <WelcomeScreen
           userName={userName}
+          userNickname={userNickname}
           onStart={() => setStep('CATEGORY')}
           onOpenMenu={onOpenMenu}
         />

@@ -1,8 +1,9 @@
 /**
  * 侧边栏导航组件
- * v2.2 - 修复用户菜单按钮点击问题
+ * v2.3 - 使用 nickname 首字作为头像显示
  *
  * 变更：
+ * - v2.3: 头像显示昵称首字（如"辉"），更亲切
  * - v2.2: 分离移动端/桌面端 ref，添加 z-index 和 stopPropagation 修复点击问题
  * - v2.1: 用户菜单添加"修改密码"选项
  * - v2.0: 用户信息区域可点击，显示登出菜单
@@ -65,16 +66,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: AppView.HISTORY, label: '历史记录', icon: Icons.Clock },
   ];
 
-  // 获取用户名首字母缩写
-  const getInitials = (name: string) => {
-    const parts = name.split(' ').filter(p => p);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  // 获取头像显示字符：优先使用昵称首字，否则用姓名首字
+  const getAvatarChar = () => {
+    if (user?.nickname) {
+      return user.nickname.slice(0, 1);  // 昵称首字，如"辉"
     }
-    return name.slice(0, 2).toUpperCase();
+    if (user?.name) {
+      return user.name.slice(0, 1);  // 姓名首字
+    }
+    return 'U';
   };
 
-  const userInitials = user ? getInitials(user.name) : 'U';
+  const userInitials = getAvatarChar();
   const userName = user?.name || '用户';
   const storeName = user?.store_name || '未分配门店';
 

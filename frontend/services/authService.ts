@@ -1,8 +1,9 @@
 /**
  * 简化认证服务 - 直接查询 ims_users 表
- * v4.0 - 添加账号锁定和修改密码功能
+ * v4.1 - 添加 nickname 昵称字段支持
  *
  * 变更历史：
+ * - v4.1: 添加 nickname 字段，用于更亲切的显示名称
  * - v4.0: 登录失败5次锁定账号，支持修改密码
  * - v3.0: 移除 Supabase Auth，直接查询 ims_users 表，明文密码认证
  * - v2.0: 使用 Supabase Auth 替代 UserCenter
@@ -19,6 +20,7 @@ export interface CurrentUser {
   id: string;
   username: string;
   name: string;
+  nickname: string | null;  // 昵称，用于更亲切的显示
   phone: string | null;
   role: string;
   store_id: string | null;
@@ -54,6 +56,7 @@ export async function login(username: string, password: string): Promise<Current
       id,
       username,
       name,
+      nickname,
       phone,
       role,
       store_id,
@@ -98,6 +101,7 @@ export async function login(username: string, password: string): Promise<Current
     id: data.id,
     username: data.username,
     name: data.name,
+    nickname: data.nickname || null,
     phone: data.phone,
     role: data.role,
     store_id: data.store_id,

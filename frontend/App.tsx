@@ -1,3 +1,4 @@
+// v4.1.0 - 添加 userNickname 支持，用于更亲切的问候语
 // v4.0.1 - 修复预加载无限循环，改为后台静默加载不阻塞UI
 // v4.0.0 - 添加上传队列历史记录页面（显示队列状态、支持失败重试）
 // v3.5.0 - 集成 PreloadDataContext，实现下拉框数据预加载
@@ -48,8 +49,9 @@ const AppContent: React.FC = () => {
     loadLogs();
   }, [isAuthenticated, user?.store_id]);
 
-  // 从认证上下文获取用户名
+  // 从认证上下文获取用户名和昵称
   const CURRENT_USER_NAME = user?.name || "用户";
+  const CURRENT_USER_NICKNAME = user?.nickname || user?.name || "用户";
 
   // 仅认证加载时显示 loading（预加载在后台静默进行）
   if (isLoading) {
@@ -125,7 +127,7 @@ const AppContent: React.FC = () => {
                 <Dashboard logs={logs} />
               )
             )}
-            {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} onOpenMenu={() => setSidebarOpen(true)} />}
+            {currentView === AppView.NEW_ENTRY && <EntryForm onSave={handleSaveEntry} userName={CURRENT_USER_NAME} userNickname={CURRENT_USER_NICKNAME} onOpenMenu={() => setSidebarOpen(true)} />}
             {currentView === AppView.HISTORY && <QueueHistoryPage onBack={() => setCurrentView(AppView.DASHBOARD)} />}
             {currentView === AppView.CHANGE_PASSWORD && <ChangePasswordPage onBack={() => setCurrentView(AppView.DASHBOARD)} />}
         </main>
