@@ -1,12 +1,13 @@
 /**
  * PreloadDataContext - 数据预加载上下文
- * v1.3 - 供应商也支持品牌过滤
+ * v1.4 - 添加分类预加载，从数据库读取分类数据
  *
  * 功能：
  * - 应用启动时后台静默预加载所有下拉框数据
  * - 不阻塞页面渲染，用户可立即使用
  * - 使用 ref 防止重复加载
  * - 与 supabaseService.ts 共享缓存机制
+ * - v1.4: 新增分类预加载，支持品牌过滤
  * - v1.3: 供应商也根据用户 brand_code 过滤
  * - v1.2: 根据用户 brand_code 加载对应品牌的物料
  *
@@ -21,12 +22,14 @@ import {
   getSuppliers,
   getProducts,
   getAllUnits,
+  getCategories,
   injectSuppliersCache,
   injectProductsCache,
   injectUnitsCache,
+  injectCategoriesCache,
 } from '../services/supabaseService';
 import { getCurrentUser } from '../services/authService';
-import type { Supplier, Product } from '../services/supabaseService';
+import type { Supplier, Product, Category } from '../services/supabaseService';
 
 interface UnitOption {
   id: number;
@@ -39,6 +42,7 @@ interface PreloadDataContextValue {
   suppliers: Supplier[];
   products: Product[];
   units: UnitOption[];
+  categories: Category[];  // v1.4: 新增分类
 
   // 加载状态（仅供调试，不阻塞UI）
   isLoading: boolean;
@@ -57,6 +61,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -81,8 +86,8 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     try {
       // 并行加载所有数据
-      // v1.3: 产品和供应商都传入品牌代码进行过滤
-      const [suppliersData, productsData, unitsData] = await Promise.all([
+      // v1.4: 分类、产品、供应商都传入品牌代码进行过滤
+      const [suppliersData, productsData, unitsData, categoriesData] = await Promise.all([
         getSuppliers(brandCode).catch(err => {
           console.error('[PreloadData] 加载供应商失败:', err);
           return [];
@@ -95,22 +100,29 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           console.error('[PreloadData] 加载单位失败:', err);
           return [];
         }),
+        getCategories(brandCode).catch(err => {
+          console.error('[PreloadData] 加载分类失败:', err);
+          return [];
+        }),
       ]);
 
       setSuppliers(suppliersData);
       setProducts(productsData);
       setUnits(unitsData);
+      setCategories(categoriesData);
       setIsLoaded(true);
 
       // 注入到 supabaseService 缓存中，供 AutocompleteInput 使用
       injectSuppliersCache(suppliersData);
       injectProductsCache(productsData);
       injectUnitsCache(unitsData);
+      injectCategoriesCache(categoriesData);
 
       console.log('[PreloadData] 预加载完成:', {
         suppliers: suppliersData.length,
         products: productsData.length,
         units: unitsData.length,
+        categories: categoriesData.length,
         brandCode: brandCode || '全部',
       });
     } catch (err) {
@@ -138,6 +150,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     suppliers,
     products,
     units,
+    categories,
     isLoading,
     isLoaded,
     error,

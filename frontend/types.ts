@@ -1,4 +1,5 @@
 
+// v3.2 - CategoryType 改为 string，分类从数据库动态读取
 // v3.1 - 新增 productId 用于严格产品匹配
 export interface ProcurementItem {
   name: string;
@@ -11,7 +12,8 @@ export interface ProcurementItem {
   productId?: number;    // v3.1: 产品 ID，用于严格匹配数据库
 }
 
-export type CategoryType = 'Meat' | 'Vegetables' | 'Dry Goods' | 'Alcohol' | 'Consumables' | 'Other';
+// v3.2: 分类现在从数据库 ims_ref_category 动态读取，不再硬编码
+export type CategoryType = string;
 
 // 附件图片类型 - 用于采购凭证
 export interface AttachedImage {

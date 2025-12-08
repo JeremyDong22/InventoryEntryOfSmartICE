@@ -1,10 +1,11 @@
 /**
  * Supabase 数据库服务
+ * v3.6 - 添加分类API，getCategories() 从数据库读取分类
  * v3.5 - 添加供应商品牌过滤，getSuppliers() 支持 brandCode 参数
  * v3.4 - 添加 brandCode 品牌过滤，支持按品牌加载物料
- * v3.3 - 添加删除采购记录功能
  *
  * 变更历史：
+ * - v3.6: 新增 getCategories() 从数据库读取物料分类，支持品牌过滤
  * - v3.5: getSuppliers() 支持 brandCode 参数，用于按品牌过滤供应商
  * - v3.4: getProducts() 支持 brandCode 参数，用于按品牌过滤物料
  * - v3.3: 添加删除采购记录功能
@@ -65,6 +66,14 @@ export interface UnitOfMeasure {
   dimension?: string;
 }
 
+// v3.6 - 物料分类
+export interface Category {
+  id: number;
+  name: string;
+  sort_order: number;
+  brand_code?: string | null;
+}
+
 // v3.0 - 简化的采购价格记录
 export interface StorePurchasePrice {
   id?: number;
@@ -83,6 +92,36 @@ export interface StorePurchasePrice {
   supplier_name?: string;     // "其他"供应商时的名称
   notes?: string;             // 备注
   status?: string;            // pending/approved/rejected
+}
+
+// ============ 分类 API ============
+// v3.6 - 从数据库读取物料分类
+
+/**
+ * 获取物料分类列表（按品牌过滤）
+ * v3.6 - 新增：从数据库读取分类，支持品牌过滤
+ * @param brandCode 可选品牌代码 (YBL=野百灵, NGX=宁桂杏)，NULL表示通用
+ */
+export async function getCategories(brandCode?: string): Promise<Category[]> {
+  let query = supabase
+    .from('ims_ref_category')
+    .select('id, name, sort_order, brand_code')
+    .eq('is_active', true)
+    .eq('category_type', 'material');
+
+  // 品牌过滤：加载本品牌 + 通用(NULL) 分类
+  if (brandCode) {
+    query = query.or(`brand_code.eq.${brandCode},brand_code.is.null`);
+  }
+
+  const { data, error } = await query.order('sort_order');
+
+  if (error) {
+    console.error('获取分类列表失败:', error);
+    throw error;
+  }
+
+  return data || [];
 }
 
 // ============ 供应商 API ============
@@ -433,6 +472,7 @@ export interface AutocompleteOption {
 let suppliersCache: Supplier[] | null = null;
 let productsCache: Product[] | null = null;
 let unitsCache: Array<{id: number, code: string, name: string}> | null = null;
+let categoriesCache: Category[] | null = null;
 
 /**
  * 注入供应商缓存（由 PreloadDataContext 调用）
@@ -456,6 +496,15 @@ export function injectProductsCache(data: Product[]): void {
 export function injectUnitsCache(data: Array<{id: number, code: string, name: string}>): void {
   unitsCache = data;
   console.log(`[SupabaseService] 注入单位缓存: ${data.length} 条`);
+}
+
+/**
+ * 注入分类缓存（由 PreloadDataContext 调用）
+ * v3.6 - 新增
+ */
+export function injectCategoriesCache(data: Category[]): void {
+  categoriesCache = data;
+  console.log(`[SupabaseService] 注入分类缓存: ${data.length} 条`);
 }
 
 /**
@@ -555,6 +604,7 @@ export function clearSearchCache(): void {
   suppliersCache = null;
   productsCache = null;
   unitsCache = null;
+  categoriesCache = null;
 }
 
 // ============ v3.1: 获取全部选项（用于下拉选择器） ============

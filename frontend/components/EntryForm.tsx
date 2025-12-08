@@ -1,4 +1,6 @@
 // EntryForm - 采购录入表单
+// v4.4 - 分类从数据库动态读取（ims_ref_category），支持品牌过滤
+// v4.3 - 修复浮点数精度问题（如单价4.1乘数量时总价出现无限循环9）
 // v4.2 - 添加 userNickname 支持，用于更亲切的问候语
 // v4.1 - 完整表单验证（供应商、单位、产品精确匹配）+ 提交直接加入队列
 // v4.0 - 添加上传队列功能：支持"加入队列"提交模式，用户无需等待上传完成
@@ -20,8 +22,9 @@
 // v1.9 - 添加收货订单图片上传区，集成到信息卡片中
 // v1.8 - 语音录入交互优化：识别后可编辑文本，点击发送按钮才解析填充表单
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types';
+import { usePreloadData } from '../contexts/PreloadDataContext';
 import { recognizeReceipt } from '../services/receiptRecognitionService';
 import { compressImage, generateThumbnail, formatFileSize } from '../services/imageService';
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
@@ -42,13 +45,19 @@ interface EntryFormProps {
 
 type EntryStep = 'WELCOME' | 'CATEGORY' | 'WORKSHEET' | 'SUMMARY';
 
-const CATEGORIES: { id: CategoryType; label: string; icon: any }[] = [
-  { id: 'Meat', label: '肉类', icon: Icons.Meat },
-  { id: 'Vegetables', label: '蔬果', icon: Icons.Vegetable },
-  { id: 'Dry Goods', label: '干杂', icon: Icons.Cube },
-  { id: 'Alcohol', label: '酒水', icon: Icons.Beaker },
-  { id: 'Consumables', label: '低耗', icon: Icons.Sparkles },
-];
+// v4.4: 分类图标映射 - 根据分类名称匹配图标
+// 未匹配的分类使用默认图标 Cube
+const CATEGORY_ICON_MAP: Record<string, any> = {
+  '肉类': Icons.Meat,
+  '蔬菜': Icons.Vegetable,
+  '调料': Icons.Beaker,
+  '酒水饮料': Icons.Beaker,
+  '低值易耗': Icons.Sparkles,
+  '客用物资': Icons.Sparkles,
+  '糖水铺': Icons.Beaker,
+  '海鲜/水产': Icons.Meat,
+};
+const DEFAULT_CATEGORY_ICON = Icons.Cube;
 
 // Mock Data Presets for Demo
 const MOCK_PRESETS: Record<string, { supplier: string; notes: string; items: ProcurementItem[] }> = {
@@ -193,8 +202,19 @@ const WelcomeScreen: React.FC<{ userName: string; userNickname?: string; onStart
 };
 
 // --- Category Screen (Floating Layered List) ---
+// v4.4: 分类从数据库动态读取，通过 props 传入
 
-const CategoryScreen: React.FC<{ onSelect: (cat: CategoryType) => void; onBack: () => void }> = ({ onSelect, onBack }) => (
+interface CategoryItem {
+  id: number;
+  name: string;
+  sort_order: number;
+}
+
+const CategoryScreen: React.FC<{
+  categories: CategoryItem[];
+  onSelect: (categoryName: string) => void;
+  onBack: () => void;
+}> = ({ categories, onSelect, onBack }) => (
   <div className="min-h-full h-full p-6 flex flex-col animate-slide-in relative overflow-hidden safe-area-bottom">
     {/* Vintage Postcard ambient glows */}
     <div className="absolute top-20 right-10 w-64 h-64 rounded-full bg-harbor-blue opacity-12 blur-3xl"></div>
@@ -211,23 +231,26 @@ const CategoryScreen: React.FC<{ onSelect: (cat: CategoryType) => void; onBack: 
     </div>
 
     <div className="flex-1 space-y-3 overflow-y-auto relative z-10 pb-4">
-      {CATEGORIES.map((cat, idx) => (
-        <button
-          key={cat.id}
-          onClick={() => onSelect(cat.id)}
-          className="group w-full flex items-center justify-between p-5 glass-card hover:bg-glass-bg-hover transition-all active:scale-[0.98] animate-slide-in"
-          style={{ animationDelay: `${idx * 0.05}s` }}
-        >
-          <div className="flex items-center gap-4">
-            {/* Vintage Icon Container */}
-            <div className="w-12 h-12 rounded-glass-lg bg-glass-bg backdrop-blur-glass border border-glass-border flex items-center justify-center text-secondary group-hover:text-harbor-blue transition-colors">
-               <cat.icon className="w-5 h-5" />
+      {categories.map((cat, idx) => {
+        const IconComponent = CATEGORY_ICON_MAP[cat.name] || DEFAULT_CATEGORY_ICON;
+        return (
+          <button
+            key={cat.id}
+            onClick={() => onSelect(cat.name)}
+            className="group w-full flex items-center justify-between p-5 glass-card hover:bg-glass-bg-hover transition-all active:scale-[0.98] animate-slide-in"
+            style={{ animationDelay: `${idx * 0.05}s` }}
+          >
+            <div className="flex items-center gap-4">
+              {/* Vintage Icon Container */}
+              <div className="w-12 h-12 rounded-glass-lg bg-glass-bg backdrop-blur-glass border border-glass-border flex items-center justify-center text-secondary group-hover:text-harbor-blue transition-colors">
+                <IconComponent className="w-5 h-5" />
+              </div>
+              <span className="text-lg font-semibold text-primary group-hover:text-harbor-blue">{cat.name}</span>
             </div>
-            <span className="text-lg font-semibold text-primary group-hover:text-harbor-blue">{cat.label}</span>
-          </div>
-          <Icons.ChevronRight className="w-5 h-5 text-muted group-hover:text-harbor-blue transition-colors" />
-        </button>
-      ))}
+            <Icons.ChevronRight className="w-5 h-5 text-muted group-hover:text-harbor-blue transition-colors" />
+          </button>
+        );
+      })}
     </div>
   </div>
 );
@@ -1013,8 +1036,11 @@ const SummaryScreen: React.FC<{
 // --- Main Container ---
 
 export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNickname, onOpenMenu }) => {
+  // v4.4: 从预加载数据获取分类
+  const { categories } = usePreloadData();
+
   const [step, setStep] = useState<EntryStep>('WELCOME');
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('Meat');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('');
   const [supplier, setSupplier] = useState('');
   const [supplierOther, setSupplierOther] = useState('');  // v3.0: "其他"供应商名称
   const [notes, setNotes] = useState('');
@@ -1213,8 +1239,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     });
   }, []);
 
-  const handleCategorySelect = (cat: CategoryType) => {
-    setSelectedCategory(cat);
+  // v4.4: 分类选择现在使用分类名称（字符串）
+  const handleCategorySelect = (categoryName: string) => {
+    setSelectedCategory(categoryName);
     // Initialize with empty form for production use
     setSupplier('');
     setNotes('');
@@ -1234,17 +1261,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     }
 
     // v2.1 - 双向计算：支持用户输入总价或单价
+    // v4.3 - 修复浮点数精度问题（如 4.1 * 3 = 12.299999... 的问题）
     if (field === 'quantity' || field === 'unitPrice') {
-      // 数量或单价变化 → 计算总价
+      // 数量或单价变化 → 计算总价（四舍五入到2位小数）
       const q = parseFloat(updatedItem.quantity as any) || 0;
       const p = parseFloat(updatedItem.unitPrice as any) || 0;
-      updatedItem.total = q * p;
+      updatedItem.total = Math.round(q * p * 100) / 100;
     } else if (field === 'total') {
-      // 总价变化 → 反算单价
+      // 总价变化 → 反算单价（四舍五入到2位小数）
       const q = parseFloat(updatedItem.quantity as any) || 0;
       const t = parseFloat(updatedItem.total as any) || 0;
       if (q > 0) {
-        updatedItem.unitPrice = t / q;
+        updatedItem.unitPrice = Math.round((t / q) * 100) / 100;
       }
     }
 
@@ -1650,6 +1678,7 @@ ${productList}
       )}
       {step === 'CATEGORY' && (
         <CategoryScreen
+          categories={categories}
           onSelect={handleCategorySelect}
           onBack={() => setStep('WELCOME')}
         />
