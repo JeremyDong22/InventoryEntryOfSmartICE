@@ -1,10 +1,12 @@
 /**
  * Supabase 数据库服务
+ * v3.4 - 添加 brandCode 品牌过滤，支持按品牌加载物料
  * v3.3 - 添加删除采购记录功能
  * v3.2 - 集成 PreloadDataContext 缓存机制，实现数据预加载
- * v3.1 - 添加获取全部产品/供应商函数（用于下拉选择器）
  *
  * 变更历史：
+ * - v3.4: getProducts() 支持 brandCode 参数，用于按品牌过滤物料
+ * - v3.3: 添加删除采购记录功能
  * - v3.2: 与 PreloadDataContext 共享缓存，支持应用启动时预加载数据
  * - v3.1: 新增 getAllProducts、getAllSuppliers 用于下拉列表展示全部选项
  * - v3.0: 简化 ims_material_price 表，移除 SKU，改为直接关联 material
@@ -169,9 +171,12 @@ export async function createOrGetSupplier(name: string): Promise<Supplier> {
 // v2.2 - 使用 ims_material 和 ims_material_sku 表
 
 /**
- * 获取产品列表（按分类）
+ * 获取产品列表（按分类/品牌过滤）
+ * v3.4 - 添加 brandCode 参数，支持按品牌过滤物料
+ * @param categoryId 可选分类ID
+ * @param brandCode 可选品牌代码 (YBL=野百灵, NGX=宁桂杏, COMMON=通用)
  */
-export async function getProducts(categoryId?: number): Promise<Product[]> {
+export async function getProducts(categoryId?: number, brandCode?: string): Promise<Product[]> {
   let query = supabase
     .from('ims_material')
     .select('id, code, name, category_id, base_unit_id, is_active')
@@ -179,6 +184,11 @@ export async function getProducts(categoryId?: number): Promise<Product[]> {
 
   if (categoryId) {
     query = query.eq('category_id', categoryId);
+  }
+
+  // v3.4: 品牌过滤 - 加载本品牌 + 通用(COMMON) 物料
+  if (brandCode) {
+    query = query.or(`brand_code.eq.${brandCode},brand_code.eq.COMMON,brand_code.is.null`);
   }
 
   const { data, error } = await query.order('name');

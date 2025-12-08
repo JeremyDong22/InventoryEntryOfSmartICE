@@ -1,8 +1,9 @@
 /**
  * 简化认证服务 - 直接查询 ims_users 表
- * v4.2 - 添加 SWR 模式：启动时后台静默刷新用户信息
+ * v4.3 - 添加 brand_code 品牌标识，支持按品牌过滤物料
  *
  * 变更历史：
+ * - v4.3: 添加 brand_code 字段，用于区分野百灵(YBL)/宁桂杏(NGX)品牌
  * - v4.2: 添加 refreshUser 函数，支持 Stale-While-Revalidate 模式
  * - v4.1: 添加 nickname 字段，用于更亲切的显示名称
  * - v4.0: 登录失败5次锁定账号，支持修改密码
@@ -26,6 +27,7 @@ export interface CurrentUser {
   role: string;
   store_id: string | null;
   store_name: string | null;
+  brand_code: string | null; // 品牌标识: YBL=野百灵, NGX=宁桂杏
 }
 
 /**
@@ -61,7 +63,7 @@ export async function login(username: string, password: string): Promise<Current
       phone,
       role,
       store_id,
-      ims_stores(store_name)
+      ims_stores(store_name, brand_code)
     `)
     .eq('username', username)
     .eq('password', password)
@@ -107,6 +109,7 @@ export async function login(username: string, password: string): Promise<Current
     role: data.role,
     store_id: data.store_id,
     store_name: (data.ims_stores as any)?.store_name || null,
+    brand_code: (data.ims_stores as any)?.brand_code || null,
   };
 
   // 保存到 localStorage
@@ -200,7 +203,7 @@ export async function refreshUser(userId: string): Promise<CurrentUser | null> {
         phone,
         role,
         store_id,
-        ims_stores(store_name)
+        ims_stores(store_name, brand_code)
       `)
       .eq('id', userId)
       .eq('is_active', true)
@@ -221,6 +224,7 @@ export async function refreshUser(userId: string): Promise<CurrentUser | null> {
       role: data.role,
       store_id: data.store_id,
       store_name: (data.ims_stores as any)?.store_name || null,
+      brand_code: (data.ims_stores as any)?.brand_code || null,
     };
 
     // 更新 localStorage

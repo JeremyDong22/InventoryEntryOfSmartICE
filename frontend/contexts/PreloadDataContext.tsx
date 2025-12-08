@@ -1,12 +1,13 @@
 /**
  * PreloadDataContext - 数据预加载上下文
- * v1.1 - 修复无限循环 + 改为后台静默加载（不阻塞UI）
+ * v1.2 - 添加品牌过滤支持，根据用户所属门店品牌加载对应物料
  *
  * 功能：
  * - 应用启动时后台静默预加载所有下拉框数据
  * - 不阻塞页面渲染，用户可立即使用
  * - 使用 ref 防止重复加载
  * - 与 supabaseService.ts 共享缓存机制
+ * - v1.2: 根据用户 brand_code 加载对应品牌的物料
  *
  * 使用方式：
  * 1. 在 App.tsx 中使用 PreloadDataProvider 包裹应用
@@ -23,6 +24,7 @@ import {
   injectProductsCache,
   injectUnitsCache,
 } from '../services/supabaseService';
+import { getCurrentUser } from '../services/authService';
 import type { Supplier, Product } from '../services/supabaseService';
 
 interface UnitOption {
@@ -68,18 +70,23 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!force && hasStartedLoading.current) return;
     hasStartedLoading.current = true;
 
-    console.log('[PreloadData] 后台静默预加载下拉框数据...');
+    // v1.2: 获取当前用户的品牌代码用于过滤物料
+    const currentUser = getCurrentUser();
+    const brandCode = currentUser?.brand_code || undefined;
+
+    console.log('[PreloadData] 后台静默预加载下拉框数据...', brandCode ? `(品牌: ${brandCode})` : '(无品牌过滤)');
     setIsLoading(true);
     setError(null);
 
     try {
       // 并行加载所有数据
+      // v1.2: 产品加载时传入品牌代码进行过滤
       const [suppliersData, productsData, unitsData] = await Promise.all([
         getSuppliers().catch(err => {
           console.error('[PreloadData] 加载供应商失败:', err);
           return [];
         }),
-        getProducts().catch(err => {
+        getProducts(undefined, brandCode).catch(err => {
           console.error('[PreloadData] 加载产品失败:', err);
           return [];
         }),
@@ -103,6 +110,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         suppliers: suppliersData.length,
         products: productsData.length,
         units: unitsData.length,
+        brandCode: brandCode || '全部',
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载数据失败';
