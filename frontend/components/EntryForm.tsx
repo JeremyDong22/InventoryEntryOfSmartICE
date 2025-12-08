@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v4.5 - 使用新的彩色分类图标（Steak, Carrot, Seasoning, WineGlass 等）
 // v4.4 - 分类从数据库动态读取（ims_ref_category），支持品牌过滤
 // v4.3 - 修复浮点数精度问题（如单价4.1乘数量时总价出现无限循环9）
 // v4.2 - 添加 userNickname 支持，用于更亲切的问候语
@@ -45,17 +46,17 @@ interface EntryFormProps {
 
 type EntryStep = 'WELCOME' | 'CATEGORY' | 'WORKSHEET' | 'SUMMARY';
 
-// v4.4: 分类图标映射 - 根据分类名称匹配图标
+// v4.5: 分类图标映射 - 使用新的彩色 SVG 图标
 // 未匹配的分类使用默认图标 Cube
 const CATEGORY_ICON_MAP: Record<string, any> = {
-  '肉类': Icons.Meat,
-  '蔬菜': Icons.Vegetable,
-  '调料': Icons.Beaker,
-  '酒水饮料': Icons.Beaker,
-  '低值易耗': Icons.Sparkles,
-  '客用物资': Icons.Sparkles,
-  '糖水铺': Icons.Beaker,
-  '海鲜/水产': Icons.Meat,
+  '肉类': Icons.Steak,
+  '蔬菜': Icons.Carrot,
+  '调料': Icons.Seasoning,
+  '酒水饮料': Icons.WineGlass,
+  '低值易耗': Icons.TissueBox,
+  '客用物资': Icons.Towel,
+  '糖水铺': Icons.DessertBowl,
+  '海鲜/水产': Icons.Fish,
 };
 const DEFAULT_CATEGORY_ICON = Icons.Cube;
 

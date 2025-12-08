@@ -334,4 +334,122 @@ export const Icons = {
       className: className
     },
     React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" })),
+
+  // v4.4: 分类图标 - 更生动的 SVG 图标
+
+  // 肉类 - 牛排图标
+  Steak: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M19.5 10.5c0 4.694-3.5 8.5-7.5 8.5s-7.5-3.806-7.5-8.5c0-2.5 1.5-4.5 3.5-5.5 1-.5 2.5-.5 4-.5s3 0 4 .5c2 1 3.5 3 3.5 5.5z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M9 11c0 1.105.672 2 1.5 2s1.5-.895 1.5-2-.672-2-1.5-2S9 9.895 9 11z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M14 9.5c0 .828.448 1.5 1 1.5s1-.672 1-1.5-.448-1.5-1-1.5-1 .672-1 1.5z" })),
+
+  // 蔬菜 - 胡萝卜图标
+  Carrot: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M15.5 3.5c1.5 0 3 1 3 2.5s-1.5 2-3 2c.5 1 0 2-1 2.5M12 7c-1-1-3-1-4.5 0s-1.5 3 0 4.5L12 21l4.5-9.5c1.5-1.5 1.5-3.5 0-4.5s-3.5-1-4.5 0z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M10 12l1 3M12.5 11l1 3" })),
+
+  // 调料 - 调料瓶图标
+  Seasoning: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M9 3h6v3H9V3zM8 6h8v2c0 1-1 2-2 2h-4c-1 0-2-1-2-2V6z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M8 10h8l1 10c0 .5-.5 1-1 1H8c-.5 0-1-.5-1-1l1-10z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M10 14h4M10 17h4" })),
+
+  // 酒水饮料 - 酒杯图标
+  WineGlass: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M8 3h8l-1 7c-.2 1.5-1.5 3-3 3h-0c-1.5 0-2.8-1.5-3-3L8 3z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M12 13v6M9 21h6" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M8.5 7h7" })),
+
+  // 低值易耗 - 纸巾盒图标
+  TissueBox: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M4 8h16v11c0 .5-.5 1-1 1H5c-.5 0-1-.5-1-1V8z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M4 8l2-4h12l2 4" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M9 8v-1c0-.5.5-1 1-1h4c.5 0 1 .5 1 1v1" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M12 8c0 2-1 3-1 3s2 1 2 3" })),
+
+  // 客用物资 - 毛巾图标
+  Towel: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M4 6h16c.5 0 1 .5 1 1v2c0 .5-.5 1-1 1H4c-.5 0-1-.5-1-1V7c0-.5.5-1 1-1z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M5 10v8c0 1 1 2 2 2h10c1 0 2-1 2-2v-8" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M9 10v7M12 10v7M15 10v7" })),
+
+  // 糖水铺 - 甜品碗图标
+  DessertBowl: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M5 10h14c0 5-3 8-7 8s-7-3-7-8z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M12 18v2M9 21h6" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M8 6c0-2 1.5-3 4-3s4 1 4 3" }),
+    React.createElement("circle", { cx: "9", cy: "8", r: "1" }),
+    React.createElement("circle", { cx: "12", cy: "7", r: "1" }),
+    React.createElement("circle", { cx: "15", cy: "8", r: "1" })),
+
+  // 海鲜/水产 - 鱼图标
+  Fish: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M12 6c4 0 7 2 8 6-1 4-4 6-8 6s-7-2-8-6c1-4 4-6 8-6z" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M2 12c1-2 2-3 2-3s-1 2-2 3zm0 0c1 2 2 3 2 3s-1-2-2-3z" }),
+    React.createElement("circle", { cx: "16", cy: "11", r: "1", fill: "currentColor" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M8 10c1 0 2 1 2 2s-1 2-2 2" })),
 };
