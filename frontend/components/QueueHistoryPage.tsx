@@ -1,5 +1,6 @@
 /**
  * QueueHistoryPage - 采购记录页面
+ * v4.2 - 添加门店隔离，只显示本门店的采购记录
  * v4.1 - 修复收货单图片加载（解析JSON数组格式的URL）
  * v4.0 - 合并显示历史记录和上传队列，供应商作为标题，支持删除
  *
@@ -9,11 +10,13 @@
  * - 供应商名称作为标题
  * - 历史记录支持删除（同步数据库）
  * - 懒加载：滚动到底部自动加载更多
+ * - 门店隔离：只能查看和删除本门店的记录
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { uploadQueueService, QueueItem, QueueStatus } from '../services/uploadQueueService';
 import { getProcurementHistory, deleteProcurementRecord, ProcurementHistoryItem } from '../services/supabaseService';
+import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../constants';
 import { GlassCard } from './ui';
 import { ProcurementItem } from '../types';
@@ -38,6 +41,10 @@ interface UnifiedRecord {
 type ViewMode = 'list' | 'detail';
 
 export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) => {
+  // 获取当前用户的门店ID
+  const { user } = useAuth();
+  const storeId = user?.store_id || undefined;
+
   // 本地队列状态
   const [queue, setQueue] = useState<QueueItem[]>([]);
 
@@ -62,13 +69,14 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
     return () => unsubscribe();
   }, []);
 
-  // 加载数据库历史记录
+  // 加载数据库历史记录（按门店过滤）
   const loadHistory = useCallback(async (page: number, append: boolean = false) => {
     if (loadingHistory) return;
     setLoadingHistory(true);
 
     try {
-      const result = await getProcurementHistory(page, 20);
+      // 传入 storeId 确保只加载本门店的记录
+      const result = await getProcurementHistory(page, 20, storeId);
       if (append) {
         setHistory(prev => [...prev, ...result.data]);
       } else {
@@ -81,7 +89,7 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
     } finally {
       setLoadingHistory(false);
     }
-  }, [loadingHistory]);
+  }, [loadingHistory, storeId]);
 
   // 初始加载历史记录
   useEffect(() => {
@@ -137,11 +145,12 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
     }
   };
 
-  // 删除历史记录（数据库）
+  // 删除历史记录（数据库，带门店验证）
   const handleDeleteHistory = async (id: number) => {
     if (confirm('确认删除该采购记录？此操作不可撤销。')) {
       try {
-        await deleteProcurementRecord(id);
+        // 传入 storeId 确保只能删除本门店的记录
+        await deleteProcurementRecord(id, storeId);
         setHistory(prev => prev.filter(item => item.id !== id));
         if (selectedRecord?.id === id) {
           setViewMode('list');

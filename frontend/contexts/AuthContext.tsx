@@ -1,15 +1,16 @@
 /**
  * 认证状态管理 Context
- * v3.0 - 简化为使用 localStorage
+ * v3.1 - SWR 模式：启动时后台静默刷新用户信息
  *
  * 变更历史：
+ * - v3.1: 实现 Stale-While-Revalidate，启动时先用缓存再后台刷新
  * - v3.0: 移除 Supabase Auth，使用 localStorage 会话管理
  * - v2.0: 迁移到 Supabase Auth，使用 onAuthStateChange 监听状态
  * - v1.1: UserCenter JWT Token 完整认证实现
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { CurrentUser, getCurrentUser, login as authLogin, logout as authLogout } from '../services/authService';
+import { CurrentUser, getCurrentUser, login as authLogin, logout as authLogout, refreshUser } from '../services/authService';
 
 // Context 类型定义
 interface AuthContextType {
@@ -29,16 +30,43 @@ interface AuthProviderProps {
 
 /**
  * 认证状态 Provider
+ * 实现 SWR（Stale-While-Revalidate）模式：
+ * 1. 启动时立即使用 localStorage 缓存（快速显示，避免白屏）
+ * 2. 后台静默请求数据库获取最新用户信息
+ * 3. 如果数据有变化，静默更新状态和缓存
+ * 4. 如果网络失败，继续使用缓存不影响使用
  */
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // 初始化时从 localStorage 读取用户
-    const savedUser = getCurrentUser();
-    setUser(savedUser);
+    // Step 1: 立即从 localStorage 读取用户（Stale）
+    const cachedUser = getCurrentUser();
+    setUser(cachedUser);
     setIsLoading(false);
+
+    // Step 2: 后台静默刷新（Revalidate）
+    if (cachedUser?.id) {
+      refreshUser(cachedUser.id).then((freshUser) => {
+        if (freshUser) {
+          // 检查是否有变化，避免不必要的 re-render
+          const hasChanged = JSON.stringify(freshUser) !== JSON.stringify(cachedUser);
+          if (hasChanged) {
+            console.log('用户信息已更新:', {
+              old: { store_id: cachedUser.store_id, store_name: cachedUser.store_name },
+              new: { store_id: freshUser.store_id, store_name: freshUser.store_name }
+            });
+            setUser(freshUser);
+          }
+        } else {
+          // 用户已被禁用或删除，强制登出
+          console.warn('用户账号已被禁用，自动登出');
+          authLogout();
+          setUser(null);
+        }
+      });
+    }
   }, []);
 
   const login = async (username: string, password: string) => {

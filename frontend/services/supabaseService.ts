@@ -678,13 +678,21 @@ export async function getProcurementStats(storeId?: string): Promise<{ total: nu
 
 /**
  * 删除采购记录
+ * v3.4 - 添加门店验证，只能删除本门店的记录
  * v3.3 - 新增删除功能
  */
-export async function deleteProcurementRecord(id: number): Promise<boolean> {
-  const { error } = await supabase
+export async function deleteProcurementRecord(id: number, storeId?: string): Promise<boolean> {
+  let query = supabase
     .from('ims_material_price')
     .delete()
     .eq('id', id);
+
+  // 添加门店验证，确保只能删除本门店的记录
+  if (storeId) {
+    query = query.eq('store_id', storeId);
+  }
+
+  const { error } = await query;
 
   if (error) {
     console.error('删除采购记录失败:', error);

@@ -1,8 +1,9 @@
 /**
  * 简化认证服务 - 直接查询 ims_users 表
- * v4.1 - 添加 nickname 昵称字段支持
+ * v4.2 - 添加 SWR 模式：启动时后台静默刷新用户信息
  *
  * 变更历史：
+ * - v4.2: 添加 refreshUser 函数，支持 Stale-While-Revalidate 模式
  * - v4.1: 添加 nickname 字段，用于更亲切的显示名称
  * - v4.0: 登录失败5次锁定账号，支持修改密码
  * - v3.0: 移除 Supabase Auth，直接查询 ims_users 表，明文密码认证
@@ -178,4 +179,57 @@ export function isLoggedIn(): boolean {
  */
 export async function isAuthenticated(): Promise<boolean> {
   return isLoggedIn();
+}
+
+/**
+ * 刷新用户信息 - SWR 模式核心函数
+ * 从数据库获取最新用户信息，如果有变化则更新 localStorage
+ *
+ * @param userId 用户 ID
+ * @returns 最新的用户信息，如果用户不存在或已禁用则返回 null
+ */
+export async function refreshUser(userId: string): Promise<CurrentUser | null> {
+  try {
+    const { data, error } = await supabase
+      .from('ims_users')
+      .select(`
+        id,
+        username,
+        name,
+        nickname,
+        phone,
+        role,
+        store_id,
+        ims_stores(store_name)
+      `)
+      .eq('id', userId)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      // 用户不存在或已禁用，清除本地缓存
+      console.warn('用户信息刷新失败，可能已被禁用:', error?.message);
+      return null;
+    }
+
+    const freshUser: CurrentUser = {
+      id: data.id,
+      username: data.username,
+      name: data.name,
+      nickname: data.nickname || null,
+      phone: data.phone,
+      role: data.role,
+      store_id: data.store_id,
+      store_name: (data.ims_stores as any)?.store_name || null,
+    };
+
+    // 更新 localStorage
+    localStorage.setItem('user', JSON.stringify(freshUser));
+
+    return freshUser;
+  } catch (err) {
+    // 网络错误等，静默失败，继续使用缓存
+    console.warn('刷新用户信息时网络错误，继续使用缓存:', err);
+    return null;
+  }
 }
