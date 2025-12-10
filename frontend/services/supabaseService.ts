@@ -690,17 +690,23 @@ export interface ProcurementHistoryItem {
   created_at: string;
 }
 
+// v4.5: 时间筛选类型
+export type DateFilterType = 'today' | 'week' | 'month' | 'all';
+
 /**
  * 获取采购历史记录（分页）
+ * v4.5: 添加日期范围筛选
  * @param page 页码（从0开始）
  * @param pageSize 每页数量
  * @param storeId 可选门店ID过滤
+ * @param dateFilter 日期筛选类型
  * @returns 历史记录列表
  */
 export async function getProcurementHistory(
   page: number = 0,
   pageSize: number = 20,
-  storeId?: string
+  storeId?: string,
+  dateFilter: DateFilterType = 'today'
 ): Promise<{ data: ProcurementHistoryItem[]; hasMore: boolean; total: number }> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
@@ -715,7 +721,36 @@ export async function getProcurementHistory(
     query = query.eq('store_id', storeId);
   }
 
+  // v4.5: 根据筛选类型添加日期条件
+  if (dateFilter !== 'all') {
+    const now = new Date();
+    let startDate: Date;
+
+    switch (dateFilter) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        // 本周一开始（周一为一周第一天）
+        const dayOfWeek = now.getDay();
+        const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysToMonday);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      default:
+        startDate = new Date(0);
+    }
+
+    query = query.gte('created_at', startDate.toISOString());
+  }
+
   const { data, error, count } = await query;
+
+  // DEBUG: 打印筛选条件和结果
+  console.log('[getProcurementHistory] 筛选条件:', { page, pageSize, storeId, dateFilter });
+  console.log('[getProcurementHistory] 查询结果:', { dataCount: data?.length, total: count });
 
   if (error) {
     console.error('获取采购历史失败:', error);

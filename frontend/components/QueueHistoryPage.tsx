@@ -1,5 +1,8 @@
 /**
  * QueueHistoryPage - 采购记录页面
+ * v4.7 - 一次性加载全部记录，移除分页（解决聚合显示不完整的问题）
+ * v4.6 - 添加日期筛选器（今天/本周/本月/全部）+ 聚合显示优化
+ * v4.5 - 聚合显示同一次上传的多个物品（按供应商+时间戳分组）
  * v4.4 - 重新上传防止重复点击 + 点击后返回列表并显示上传中状态
  * v4.3 - 支持显示多张货物照片（历史详情页）
  * v4.2 - 添加门店隔离，只显示本门店的采购记录
@@ -8,9 +11,11 @@
  *
  * 功能：
  * - 混合显示数据库历史记录 + 本地上传队列
+ * - 日期筛选：今天（默认）、本周、本月、全部
+ * - 历史记录按供应商+created_at聚合（同一次上传的多个物品显示为一张卡片）
  * - 按时间倒序排列
  * - 供应商名称作为标题
- * - 历史记录支持删除（同步数据库）
+ * - 历史记录支持删除（同步数据库，聚合记录批量删除）
  * - 懒加载：滚动到底部自动加载更多
  * - 门店隔离：只能查看和删除本门店的记录
  * - 支持显示多张货物照片
@@ -19,7 +24,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { uploadQueueService, QueueItem, QueueStatus } from '../services/uploadQueueService';
-import { getProcurementHistory, deleteProcurementRecord, ProcurementHistoryItem } from '../services/supabaseService';
+import { getProcurementHistory, deleteProcurementRecord, ProcurementHistoryItem, DateFilterType } from '../services/supabaseService';
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../constants';
 import { GlassCard } from './ui';
@@ -33,16 +38,25 @@ interface QueueHistoryPageProps {
 type RecordType = 'queue' | 'history';
 interface UnifiedRecord {
   type: RecordType;
-  id: string | number;
+  id: string | number;  // history类型使用聚合key，queue类型使用原始id
   supplierName: string;
   totalAmount: number;
   itemCount: number;
   timestamp: number;
   status: 'pending' | 'uploading' | 'success' | 'failed' | 'completed';
-  original: QueueItem | ProcurementHistoryItem;
+  // v4.5: history类型存储聚合后的多条记录数组
+  original: QueueItem | ProcurementHistoryItem[];
 }
 
 type ViewMode = 'list' | 'detail';
+
+// v4.5: 筛选器配置
+const DATE_FILTER_OPTIONS: { value: DateFilterType; label: string }[] = [
+  { value: 'today', label: '今天' },
+  { value: 'week', label: '本周' },
+  { value: 'month', label: '本月' },
+  { value: 'all', label: '全部' },
+];
 
 export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) => {
   // 获取当前用户的门店ID
@@ -54,15 +68,18 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
 
   // 数据库历史状态
   const [history, setHistory] = useState<ProcurementHistoryItem[]>([]);
-  const [historyPage, setHistoryPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // v4.5: 日期筛选状态
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('today');
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
   // UI 状态
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedRecord, setSelectedRecord] = useState<UnifiedRecord | null>(null);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
 
   // 订阅本地队列变化
   useEffect(() => {
@@ -73,42 +90,83 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
     return () => unsubscribe();
   }, []);
 
-  // 加载数据库历史记录（按门店过滤）
-  const loadHistory = useCallback(async (page: number, append: boolean = false) => {
+  // v4.7: 一次性加载全部历史记录（按门店和日期过滤）
+  const loadHistory = useCallback(async (filter: DateFilterType = dateFilter) => {
     if (loadingHistory) return;
     setLoadingHistory(true);
 
     try {
-      // 传入 storeId 确保只加载本门店的记录
-      const result = await getProcurementHistory(page, 20, storeId);
-      if (append) {
-        setHistory(prev => [...prev, ...result.data]);
-      } else {
-        setHistory(result.data);
-      }
-      setHasMore(result.hasMore);
-      setHistoryPage(page);
+      // 一次性加载全部记录（pageSize=1000足够覆盖一个月的数据）
+      const result = await getProcurementHistory(0, 1000, storeId, filter);
+      console.log(`[初始加载] ${filter} 返回 ${result.data.length} 条记录`);
+      setHistory(result.data);
     } catch (error) {
       console.error('加载历史记录失败:', error);
     } finally {
       setLoadingHistory(false);
     }
-  }, [loadingHistory, storeId]);
+  }, [loadingHistory, storeId, dateFilter]);
 
   // 初始加载历史记录
   useEffect(() => {
-    loadHistory(0);
+    loadHistory();
   }, []);
 
-  // 滚动加载更多
-  const handleScroll = useCallback(() => {
-    if (!scrollContainerRef.current || !hasMore || loadingHistory) return;
+  // v4.7: 切换筛选器时一次性加载全部记录
+  const handleFilterChange = async (filter: DateFilterType) => {
+    console.log(`[筛选器] 切换到: ${filter}, storeId: ${storeId}`);
+    setDateFilter(filter);
+    setShowFilterDropdown(false);
+    setHistory([]);
+    setLoadingHistory(true);
 
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-    if (scrollHeight - scrollTop - clientHeight < 200) {
-      loadHistory(historyPage + 1, true);
+    try {
+      // 一次性加载全部记录（pageSize=1000足够覆盖一个月的数据）
+      const result = await getProcurementHistory(0, 1000, storeId, filter);
+      console.log(`[筛选器] ${filter} 返回 ${result.data.length} 条记录`);
+      setHistory(result.data);
+    } catch (error) {
+      console.error('加载历史记录失败:', error);
+    } finally {
+      setLoadingHistory(false);
     }
-  }, [hasMore, loadingHistory, historyPage, loadHistory]);
+  };
+
+  // v4.5: 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setShowFilterDropdown(false);
+      }
+    };
+    if (showFilterDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFilterDropdown]);
+
+  // v4.7: 聚合历史记录 - 按供应商+created_at分组
+  const aggregatedHistory = React.useMemo(() => {
+    const groups = new Map<string, ProcurementHistoryItem[]>();
+
+    history.forEach(item => {
+      // 使用供应商+created_at作为聚合key（同一次上传的记录created_at相同）
+      const key = `${item.supplier_name || '未知供应商'}_${item.created_at}`;
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(item);
+    });
+
+    return Array.from(groups.entries()).map(([key, items]) => ({
+      key,
+      items,
+      supplierName: items[0].supplier_name || '未知供应商',
+      totalAmount: items.reduce((sum, i) => sum + i.total_amount, 0),
+      itemCount: items.length,
+      timestamp: new Date(items[0].created_at).getTime(),
+    }));
+  }, [history]);
 
   // 合并并排序记录
   const unifiedRecords: UnifiedRecord[] = [
@@ -123,18 +181,18 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
         itemCount: item.data.items.length,
         timestamp: item.createdAt,
         status: item.status as UnifiedRecord['status'],
-        original: item,
+        original: [item] as any,  // 保持类型兼容，实际使用时会区分type
       })),
-    // 数据库历史记录
-    ...history.map(item => ({
+    // v4.5: 聚合后的历史记录
+    ...aggregatedHistory.map(group => ({
       type: 'history' as RecordType,
-      id: item.id,
-      supplierName: item.supplier_name || '未知供应商',
-      totalAmount: item.total_amount,
-      itemCount: 1,
-      timestamp: new Date(item.created_at).getTime(),
+      id: group.key,  // 使用聚合key作为id
+      supplierName: group.supplierName,
+      totalAmount: group.totalAmount,
+      itemCount: group.itemCount,
+      timestamp: group.timestamp,
       status: 'completed' as UnifiedRecord['status'],
-      original: item,
+      original: group.items,  // 存储聚合后的所有记录
     })),
   ].sort((a, b) => b.timestamp - a.timestamp);
 
@@ -149,16 +207,32 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
     }
   };
 
-  // 删除历史记录（数据库，带门店验证）
-  const handleDeleteHistory = async (id: number) => {
-    if (confirm('确认删除该采购记录？此操作不可撤销。')) {
+  // v4.5: 删除历史记录（支持批量删除聚合记录）
+  const handleDeleteHistory = async (items: ProcurementHistoryItem[]) => {
+    const itemCount = items.length;
+    const confirmMsg = itemCount > 1
+      ? `确认删除这 ${itemCount} 条采购记录？此操作不可撤销。`
+      : '确认删除该采购记录？此操作不可撤销。';
+
+    if (confirm(confirmMsg)) {
       try {
-        // 传入 storeId 确保只能删除本门店的记录
-        await deleteProcurementRecord(id, storeId);
-        setHistory(prev => prev.filter(item => item.id !== id));
-        if (selectedRecord?.id === id) {
-          setViewMode('list');
-          setSelectedRecord(null);
+        // 批量删除所有聚合的记录
+        const deletePromises = items.map(item =>
+          deleteProcurementRecord(item.id, storeId)
+        );
+        await Promise.all(deletePromises);
+
+        // 从本地状态中移除
+        const deletedIds = new Set(items.map(item => item.id));
+        setHistory(prev => prev.filter(item => !deletedIds.has(item.id)));
+
+        // 如果当前选中的是被删除的记录，返回列表
+        if (selectedRecord?.type === 'history') {
+          const selectedItems = selectedRecord.original as ProcurementHistoryItem[];
+          if (selectedItems.some(item => deletedIds.has(item.id))) {
+            setViewMode('list');
+            setSelectedRecord(null);
+          }
         }
       } catch (error) {
         alert('删除失败，请重试');
@@ -193,46 +267,101 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
   // 详情视图
   if (viewMode === 'detail' && selectedRecord) {
     if (selectedRecord.type === 'queue') {
+      // queue类型的original实际是QueueItem，但为了类型兼容包装成了数组
+      const queueItem = (selectedRecord.original as any)[0] as QueueItem;
       return (
         <QueueDetailView
-          item={selectedRecord.original as QueueItem}
+          item={queueItem}
           onBack={handleBackToList}
           onDelete={handleDeleteQueue}
         />
       );
     }
+    // v4.5: 聚合历史记录详情视图
     return (
       <HistoryDetailView
-        item={selectedRecord.original as ProcurementHistoryItem}
+        items={selectedRecord.original as ProcurementHistoryItem[]}
         onBack={handleBackToList}
         onDelete={handleDeleteHistory}
       />
     );
   }
 
+  // v4.5: 获取当前筛选器的显示文字
+  const currentFilterLabel = DATE_FILTER_OPTIONS.find(o => o.value === dateFilter)?.label || '今天';
+
   // 列表视图
   return (
     <div className="h-full flex flex-col animate-slide-in relative overflow-hidden">
       {/* Header */}
-      <div className="px-6 py-5 flex items-center gap-4 flex-shrink-0">
-        <button
-          onClick={onBack}
-          className="w-10 h-10 rounded-full bg-glass-bg backdrop-blur-glass border border-glass-border flex items-center justify-center text-secondary hover:bg-glass-bg-hover transition-colors"
-        >
-          <Icons.ArrowLeft className="w-5 h-5" />
-        </button>
-        <h2 className="text-2xl font-bold text-primary tracking-tight">采购记录</h2>
+      <div className="px-6 py-5 flex items-center justify-between flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="w-10 h-10 rounded-full bg-glass-bg backdrop-blur-glass border border-glass-border flex items-center justify-center text-secondary hover:bg-glass-bg-hover transition-colors"
+          >
+            <Icons.ArrowLeft className="w-5 h-5" />
+          </button>
+          <h2 className="text-2xl font-bold text-primary tracking-tight">采购记录</h2>
+        </div>
+
+        {/* v4.5: 日期筛选器（手机友好的下拉菜单） */}
+        <div className="relative" ref={filterDropdownRef}>
+          <button
+            onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-glass-bg backdrop-blur-glass border border-glass-border text-sm text-secondary hover:bg-glass-bg-hover transition-colors active:scale-95"
+          >
+            <span>{currentFilterLabel}</span>
+            <svg className={`w-4 h-4 transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* 下拉菜单 - 深色不透明背景防止文字透视 */}
+          {showFilterDropdown && (
+            <div
+              className="absolute right-0 top-full mt-2 py-2 min-w-[120px] rounded-2xl border border-glass-border shadow-glass-elevated z-50 animate-fade-in"
+              style={{ background: 'rgba(30, 32, 38, 0.95)', backdropFilter: 'blur(24px)' }}
+            >
+              {DATE_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => handleFilterChange(option.value)}
+                  className={`w-full px-4 py-3 text-left text-sm transition-colors ${
+                    dateFilter === option.value
+                      ? 'text-ios-blue bg-ios-blue/10'
+                      : 'text-secondary hover:bg-white/5'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 列表内容 */}
       <div
         ref={scrollContainerRef}
-        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-6 pb-6"
       >
         {unifiedRecords.length === 0 && !loadingHistory ? (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-muted">暂无采购记录</p>
+          <div className="h-full flex flex-col items-center justify-center gap-3">
+            <p className="text-muted">
+              {dateFilter === 'today' && '今天暂无采购记录'}
+              {dateFilter === 'week' && '本周暂无采购记录'}
+              {dateFilter === 'month' && '本月暂无采购记录'}
+              {dateFilter === 'all' && '暂无采购记录'}
+            </p>
+            {dateFilter !== 'all' && (
+              <button
+                onClick={() => handleFilterChange('all')}
+                className="text-sm text-ios-blue hover:underline"
+              >
+                查看全部记录
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -242,8 +371,8 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
                 record={record}
                 onClick={() => handleRecordClick(record)}
                 onDelete={record.type === 'queue'
-                  ? () => handleDeleteQueue(record.id as string)
-                  : () => handleDeleteHistory(record.id as number)
+                  ? () => handleDeleteQueue((record.original as any)[0].id)
+                  : () => handleDeleteHistory(record.original as ProcurementHistoryItem[])
                 }
                 formatTime={formatTime}
               />
@@ -252,9 +381,6 @@ export const QueueHistoryPage: React.FC<QueueHistoryPageProps> = ({ onBack }) =>
               <div className="py-4 flex justify-center">
                 <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
               </div>
-            )}
-            {!hasMore && unifiedRecords.length > 0 && (
-              <p className="text-center text-muted text-sm py-4">已加载全部记录</p>
             )}
           </div>
         )}
@@ -518,13 +644,17 @@ const QueueDetailView: React.FC<{
   );
 };
 
-// ============ 历史详情视图 ============
+// ============ 历史详情视图（v4.5: 支持聚合显示多个物品） ============
 
 const HistoryDetailView: React.FC<{
-  item: ProcurementHistoryItem;
+  items: ProcurementHistoryItem[];  // v4.5: 改为接收聚合后的多条记录
   onBack: () => void;
-  onDelete: (id: number) => void;
-}> = ({ item, onBack, onDelete }) => {
+  onDelete: (items: ProcurementHistoryItem[]) => void;
+}> = ({ items, onBack, onDelete }) => {
+  // 取第一条记录的公共信息（供应商、日期、图片等，聚合记录中这些相同）
+  const firstItem = items[0];
+  const totalAmount = items.reduce((sum, item) => sum + item.total_amount, 0);
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString('zh-CN', {
       year: 'numeric', month: 'numeric', day: 'numeric',
@@ -532,21 +662,7 @@ const HistoryDetailView: React.FC<{
     });
   };
 
-  // 解析图片URL（可能是JSON数组或纯字符串）- 返回单个URL
-  const parseImageUrl = (url: string | null): string | null => {
-    if (!url) return null;
-    try {
-      const parsed = JSON.parse(url);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed[0];
-      }
-      return url;
-    } catch {
-      return url;
-    }
-  };
-
-  // v4.3: 解析图片URL数组（支持多张货物照片）
+  // 解析图片URL数组（支持多张图片）
   const parseImageUrls = (url: string | null): string[] => {
     if (!url) return [];
     try {
@@ -560,8 +676,9 @@ const HistoryDetailView: React.FC<{
     }
   };
 
-  const receiptImageUrl = parseImageUrl(item.receipt_image);
-  const goodsImageUrls = parseImageUrls(item.goods_image);  // v4.3: 多张货物照片
+  // 收货单和货物照片从第一条记录获取（聚合记录共享同一套图片）
+  const receiptImageUrls = parseImageUrls(firstItem.receipt_image);
+  const goodsImageUrls = parseImageUrls(firstItem.goods_image);
 
   return (
     <div className="h-full flex flex-col animate-slide-in relative overflow-hidden">
@@ -580,63 +697,78 @@ const HistoryDetailView: React.FC<{
 
       {/* 内容 */}
       <div className="flex-1 overflow-y-auto px-6 pb-32">
+        {/* 供应商和总览信息 */}
         <GlassCard padding="lg" className="mb-4">
           <div className="space-y-4">
             <div>
               <label className="text-xs text-muted uppercase tracking-wider mb-1 block">供应商</label>
-              <p className="text-xl font-bold text-primary">{item.supplier_name || '未知供应商'}</p>
-            </div>
-
-            <div>
-              <label className="text-xs text-muted uppercase tracking-wider mb-1 block">商品名称</label>
-              <p className="text-lg text-primary">{item.item_name}</p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-muted uppercase tracking-wider mb-1 block">数量</label>
-                <p className="text-lg text-primary">{item.quantity} {item.unit}</p>
-              </div>
-              <div>
-                <label className="text-xs text-muted uppercase tracking-wider mb-1 block">单价</label>
-                <p className="text-lg text-primary">¥{item.unit_price.toFixed(2)}</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs text-muted uppercase tracking-wider mb-1 block">总金额</label>
-              <p className="text-2xl font-bold text-ios-blue">¥{item.total_amount.toFixed(2)}</p>
+              <p className="text-xl font-bold text-primary">{firstItem.supplier_name || '未知供应商'}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-muted uppercase tracking-wider mb-1 block">采购日期</label>
-                <p className="text-sm text-secondary">{item.price_date}</p>
+                <p className="text-sm text-secondary">{firstItem.price_date}</p>
               </div>
               <div>
                 <label className="text-xs text-muted uppercase tracking-wider mb-1 block">录入时间</label>
-                <p className="text-sm text-secondary">{formatDate(item.created_at)}</p>
+                <p className="text-sm text-secondary">{formatDate(firstItem.created_at)}</p>
               </div>
             </div>
 
-            {item.notes && (
+            {firstItem.notes && (
               <div>
                 <label className="text-xs text-muted uppercase tracking-wider mb-1 block">备注</label>
-                <p className="text-sm text-secondary">{item.notes}</p>
+                <p className="text-sm text-secondary">{firstItem.notes}</p>
               </div>
             )}
           </div>
         </GlassCard>
 
-        {/* 图片预览 - v4.3: 支持多张货物照片 */}
-        {(receiptImageUrl || goodsImageUrls.length > 0) && (
+        {/* v4.5: 物品清单（显示所有聚合的物品） */}
+        <GlassCard padding="lg" className="mb-4">
+          <h3 className="text-base font-bold text-primary mb-4">物品清单（{items.length} 项）</h3>
+          <div className="space-y-3">
+            {items.map((item, idx) => (
+              <div key={item.id} className="p-3 rounded-glass-lg bg-white/5 border border-white/10">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-primary">{item.item_name}</p>
+                    <p className="text-sm text-muted mt-1">
+                      {item.quantity} {item.unit} × ¥{item.unit_price.toFixed(2)}
+                    </p>
+                  </div>
+                  <p className="font-mono font-bold text-ios-blue">¥{item.total_amount.toFixed(2)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 总计 */}
+          <div className="mt-4 pt-4 border-t border-white/10 flex justify-between items-center">
+            <span className="text-secondary">总计金额</span>
+            <span className="text-2xl font-bold text-ios-blue">¥{totalAmount.toFixed(2)}</span>
+          </div>
+        </GlassCard>
+
+        {/* 图片预览 */}
+        {(receiptImageUrls.length > 0 || goodsImageUrls.length > 0) && (
           <GlassCard padding="lg">
             <h3 className="text-base font-bold text-primary mb-4">凭证图片</h3>
             <div className="space-y-4">
-              {receiptImageUrl && (
+              {receiptImageUrls.length > 0 && (
                 <div>
-                  <p className="text-xs text-muted mb-2">收货单</p>
-                  <img src={receiptImageUrl} alt="收货单" className="w-full rounded-lg object-cover" />
+                  <p className="text-xs text-muted mb-2">收货单 ({receiptImageUrls.length}张)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {receiptImageUrls.map((url, index) => (
+                      <img
+                        key={index}
+                        src={url}
+                        alt={`收货单 ${index + 1}`}
+                        className="w-full rounded-lg object-cover"
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
               {goodsImageUrls.length > 0 && (
@@ -662,12 +794,12 @@ const HistoryDetailView: React.FC<{
       {/* 底部删除按钮 */}
       <div className="fixed bottom-6 left-4 right-4 z-50 safe-area-bottom">
         <button
-          onClick={() => onDelete(item.id)}
+          onClick={() => onDelete(items)}
           className="w-full py-4 rounded-2xl text-ios-red font-semibold border border-ios-red/30 flex items-center justify-center gap-2"
           style={{ background: 'rgba(232, 90, 79, 0.15)', backdropFilter: 'blur(40px)' }}
         >
           <Icons.X className="w-5 h-5" />
-          <span>删除记录</span>
+          <span>{items.length > 1 ? `删除全部 ${items.length} 条记录` : '删除记录'}</span>
         </button>
       </div>
     </div>
