@@ -1,4 +1,6 @@
 // EntryForm - 采购录入表单
+// v4.8 - 收货单照片添加"需为同一供货商"提示 + 供应商/备注增加一键清除按钮
+// v4.7 - 货物照片支持批量添加多张（称重核对留证）
 // v4.6 - 添加 AI 使用追踪（use_ai_photo, use_ai_voice）
 // v4.5 - 使用新的彩色分类图标（Steak, Carrot, Seasoning, WineGlass 等）
 // v4.4 - 分类从数据库动态读取（ims_ref_category），支持品牌过滤
@@ -259,6 +261,7 @@ const CategoryScreen: React.FC<{
 
 // --- Worksheet Screen ---
 
+// v4.7 - goodsImages 改为数组，支持多张货物照片（称重核对留证）
 // v3.5 - receiptImages 改为数组，支持多张收货单，AI识别按钮移至图片下方
 // v3.4 - 修改 props：移除 aiAutoFill 开关，改为 isRecognizing + onAIRecognize 按钮
 // v3.0 - 新增 supplierOther + onSupplierOtherChange，receiptImage + goodsImage
@@ -271,7 +274,7 @@ const WorksheetScreen: React.FC<{
   isRecognizing: boolean;  // v3.4: AI识别中状态
   grandTotal: number;
   receiptImages: AttachedImage[];  // v3.5: 多张收货单
-  goodsImage: AttachedImage | null;
+  goodsImages: AttachedImage[];    // v4.7: 多张货物照片
   voiceStatus: RecordingStatus;
   voiceMessage: string;
   transcriptionText: string;
@@ -288,7 +291,7 @@ const WorksheetScreen: React.FC<{
   onReceiptImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onGoodsImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoveReceiptImage: (index: number) => void;  // v3.5: 删除指定索引的收货单
-  onRemoveGoodsImage: () => void;
+  onRemoveGoodsImage: (index: number) => void;    // v4.7: 删除指定索引的货物照片
   onAIRecognize: () => void;  // v3.4: AI识别按钮点击
   onVoiceStart: () => void;
   onVoiceStop: () => void;
@@ -296,7 +299,7 @@ const WorksheetScreen: React.FC<{
   onSendTranscription: () => void;
   onReview: () => void;
 }> = ({
-  items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImages, goodsImage,
+  items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImages, goodsImages,
   voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription,
   onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onProductSelect, onAddItem, onRemoveItem,
   onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAIRecognize,
@@ -357,7 +360,7 @@ const WorksheetScreen: React.FC<{
             {/* 收货单图片（多张）- 必填 */}
             <div>
               <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-                收货单照片 <span className="text-ios-red text-sm">*必填</span>
+                收货单照片 <span className="text-zinc-600 text-sm">(需为同一供货商)</span> <span className="text-ios-red text-sm">*必填</span>
               </label>
               {/* 图片行：已上传的图片 + 添加按钮 */}
               <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -447,46 +450,46 @@ const WorksheetScreen: React.FC<{
               />
             </div>
 
-            {/* 货物图片 - 必填 */}
+            {/* v4.7: 货物图片（多张）- 必填，支持批量添加多张（称重核对留证） */}
             <div>
               <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-                货物照片 <span className="text-ios-red text-sm">*必填</span>
+                货物照片 <span className="text-zinc-600 text-sm">(可多填)</span> <span className="text-ios-red text-sm">*必填</span>
               </label>
-              <div className="flex items-center gap-3">
-                {/* 已上传的货物图片 */}
-                {goodsImage && (
-                  <div className="relative group">
+              {/* 图片行：已上传的图片 + 添加按钮 */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* 已上传的货物图片列表 */}
+                {goodsImages.map((img, index) => (
+                  <div key={img.id} className="relative group">
                     <img
-                      src={`data:${goodsImage.mimeType};base64,${goodsImage.thumbnail || goodsImage.data}`}
-                      alt="货物"
-                      className="w-20 h-20 object-cover rounded-xl border border-white/15"
+                      src={`data:${img.mimeType};base64,${img.thumbnail || img.data}`}
+                      alt={`货物 ${index + 1}`}
+                      className="w-16 h-16 object-cover rounded-lg border border-white/15"
                       style={{ boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)' }}
                     />
+                    {/* 删除按钮 */}
                     <button
-                      onClick={onRemoveGoodsImage}
-                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border-2 border-[#1a1a1f]"
+                      onClick={() => onRemoveGoodsImage(index)}
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500/90 rounded-full flex items-center justify-center transition-all hover:bg-red-500 border border-[#1a1a1f]"
                     >
-                      <Icons.X className="w-3.5 h-3.5 text-white" />
+                      <Icons.X className="w-3 h-3 text-white" />
                     </button>
                   </div>
-                )}
-                {/* 上传按钮 */}
-                {!goodsImage && (
-                  <button
-                    onClick={() => goodsInputRef.current?.click()}
-                    disabled={isAnalyzing}
-                    className="w-20 h-20 rounded-xl border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-40"
-                  >
-                    {isAnalyzing ? (
-                      <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Icons.Camera className="w-6 h-6 text-white/50" />
-                        <span className="text-[10px] text-white/40">货物</span>
-                      </>
-                    )}
-                  </button>
-                )}
+                ))}
+                {/* 添加更多按钮 */}
+                <button
+                  onClick={() => goodsInputRef.current?.click()}
+                  disabled={isAnalyzing}
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-white/20 hover:border-white/40 bg-white/5 hover:bg-white/10 flex flex-col items-center justify-center gap-0.5 transition-all active:scale-95 disabled:opacity-40"
+                >
+                  {isAnalyzing ? (
+                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Icons.Plus className="w-5 h-5 text-white/50" />
+                      <span className="text-[9px] text-white/40">添加</span>
+                    </>
+                  )}
+                </button>
               </div>
               {/* v3.7: 移动端兼容性优化 - 不使用 capture 属性，让用户选择相机或相册 */}
               <input
@@ -501,18 +504,34 @@ const WorksheetScreen: React.FC<{
           </div>
 
           {/* 供应商选择 + "其他"选项 */}
-          <AutocompleteInput
-            label="供应商全称"
-            value={supplier}
-            onChange={onSupplierChange}
-            placeholder="输入供应商名称或选择'其他'"
-            searchFn={searchSuppliers}
-            debounceMs={300}
-            minChars={1}
-            extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
-            showDropdownButton={true}
-            getAllOptionsFn={getAllSuppliersAsOptions}
-          />
+          <div>
+            <div className="flex items-center justify-between mb-2 ml-1">
+              <label className="text-[20px] tracking-wider text-zinc-500 font-bold">
+                供应商全称
+              </label>
+              {supplier && (
+                <button
+                  type="button"
+                  onClick={() => onSupplierChange('')}
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-white/40 hover:text-ios-red hover:bg-ios-red/10 transition-all"
+                  title="清除供应商"
+                >
+                  <Icons.X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <AutocompleteInput
+              value={supplier}
+              onChange={onSupplierChange}
+              placeholder="输入供应商名称或选择'其他'"
+              searchFn={searchSuppliers}
+              debounceMs={300}
+              minChars={1}
+              extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
+              showDropdownButton={true}
+              getAllOptionsFn={getAllSuppliersAsOptions}
+            />
+          </div>
           {/* "其他"供应商输入框 - 仅当选择"其他"时显示，新供应商自动入库 */}
           {supplier === '其他' && (
             <div className="animate-slide-in">
@@ -530,16 +549,28 @@ const WorksheetScreen: React.FC<{
           )}
 
           <div>
-             <label className="block text-[20px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
-               备注信息
-             </label>
-             <textarea
-                value={notes}
-                onChange={(e) => onNotesChange(e.target.value)}
-                placeholder="备注信息（可选）"
-                rows={1}
-                className="glass-input w-full resize-none py-4 leading-normal"
-             />
+            <div className="flex items-center justify-between mb-2 ml-1">
+              <label className="text-[20px] tracking-wider text-zinc-500 font-bold">
+                备注信息
+              </label>
+              {notes && (
+                <button
+                  type="button"
+                  onClick={() => onNotesChange('')}
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-white/40 hover:text-ios-red hover:bg-ios-red/10 transition-all"
+                  title="清除备注"
+                >
+                  <Icons.X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              placeholder="备注信息（可选）"
+              rows={1}
+              className="glass-input w-full resize-none py-4 leading-normal"
+            />
           </div>
         </GlassCard>
 
@@ -1050,8 +1081,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // v3.5: 收货单改为数组支持多张，AI识别支持批量
+  // v4.7: 货物照片改为数组支持多张（称重核对留证）
   const [receiptImages, setReceiptImages] = useState<AttachedImage[]>([]);
-  const [goodsImage, setGoodsImage] = useState<AttachedImage | null>(null);
+  const [goodsImages, setGoodsImages] = useState<AttachedImage[]>([]);
   const [isRecognizing, setIsRecognizing] = useState(false);
 
   // 语音录入状态
@@ -1402,7 +1434,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     setIsRecognizing(false);
   };
 
-  // v3.0: 货物图片上传处理
+  // v4.7: 货物图片上传处理（支持多张，追加模式）
   const handleGoodsImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     console.log('[图片上传] 触发货物上传');
     const files = e.target.files;
@@ -1433,7 +1465,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
         compressedSize: compressed.compressedSize
       };
 
-      setGoodsImage(newImage);
+      // v4.7: 追加到数组而不是替换
+      setGoodsImages(prev => [...prev, newImage]);
       console.log('[图片上传] 货物图片处理完成!');
 
     } catch (error) {
@@ -1449,9 +1482,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     setReceiptImages([]);
   };
 
-  // v3.0: 删除货物图片
-  const removeGoodsImage = () => {
-    setGoodsImage(null);
+  // v4.7: 删除指定索引的货物图片
+  const removeGoodsImage = (index: number) => {
+    setGoodsImages(prev => prev.filter((_, i) => i !== index));
   };
 
   // 语音录入 - 开始录音
@@ -1487,7 +1520,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
         return;
     }
 
-    if (!goodsImage) {
+    // v4.7: 货物照片改为数组
+    if (goodsImages.length === 0) {
         alert('请上传货物照片（必填）');
         return;
     }
@@ -1602,7 +1636,7 @@ ${productList}
       notes: notes,
       status: 'Stocked',
       receiptImages: receiptImages.length > 0 ? receiptImages : undefined,
-      goodsImage: goodsImage || undefined,
+      goodsImages: goodsImages.length > 0 ? goodsImages : undefined,  // v4.7: 多张货物照片
     };
 
     // v4.6: 构建 AI 使用统计
@@ -1636,7 +1670,7 @@ ${productList}
             setSupplierOther('');
             setNotes('');
             setReceiptImages([]);
-            setGoodsImage(null);
+            setGoodsImages([]);  // v4.7: 重置货物照片数组
             setSubmitMessage('');
             setSubmitProgress(null);
             setCountdown(0);
@@ -1673,7 +1707,7 @@ ${productList}
     setSupplierOther('');
     setNotes('');
     setReceiptImages([]);
-    setGoodsImage(null);
+    setGoodsImages([]);  // v4.7: 重置货物照片数组
     // v4.6: 重置 AI 使用计数
     setUseAiPhotoCount(0);
     setUseAiVoiceCount(0);
@@ -1717,7 +1751,7 @@ ${productList}
           isRecognizing={isRecognizing}
           grandTotal={calculateGrandTotal()}
           receiptImages={receiptImages}
-          goodsImage={goodsImage}
+          goodsImages={goodsImages}
           voiceStatus={voiceStatus}
           voiceMessage={voiceMessage}
           transcriptionText={transcriptionText}

@@ -1,4 +1,5 @@
 
+// v3.3 - goodsImages 改为数组，支持批量添加多张货物照片
 // v3.2 - CategoryType 改为 string，分类从数据库动态读取
 // v3.1 - 新增 productId 用于严格产品匹配
 export interface ProcurementItem {
@@ -26,6 +27,7 @@ export interface AttachedImage {
   compressedSize?: number; // 压缩后大小 (bytes)
 }
 
+// v3.6 - 更新 DailyLog：goodsImages 改为数组支持多张货物照片（称重核对留证）
 // v3.5 - 更新 DailyLog：receiptImages 改为数组支持多张收货单
 // v3.0 - 新增 receiptImage/goodsImage 分类图片，supplierOther "其他"供应商名称
 export interface DailyLog {
@@ -40,7 +42,7 @@ export interface DailyLog {
   status: 'Stocked' | 'Pending' | 'Issue';
   attachments?: AttachedImage[];   // 兼容旧版
   receiptImages?: AttachedImage[]; // v3.5: 收货单图片（多张）
-  goodsImage?: AttachedImage;      // v3.0: 货物图片
+  goodsImages?: AttachedImage[];   // v3.6: 货物图片（多张，称重核对留证）
 }
 
 export interface ParseResult {

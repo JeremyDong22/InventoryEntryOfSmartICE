@@ -1,5 +1,6 @@
 /**
  * QueueHistoryPage - 采购记录页面
+ * v4.3 - 支持显示多张货物照片（历史详情页）
  * v4.2 - 添加门店隔离，只显示本门店的采购记录
  * v4.1 - 修复收货单图片加载（解析JSON数组格式的URL）
  * v4.0 - 合并显示历史记录和上传队列，供应商作为标题，支持删除
@@ -11,6 +12,7 @@
  * - 历史记录支持删除（同步数据库）
  * - 懒加载：滚动到底部自动加载更多
  * - 门店隔离：只能查看和删除本门店的记录
+ * - 支持显示多张货物照片
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -507,7 +509,7 @@ const HistoryDetailView: React.FC<{
     });
   };
 
-  // 解析图片URL（可能是JSON数组或纯字符串）
+  // 解析图片URL（可能是JSON数组或纯字符串）- 返回单个URL
   const parseImageUrl = (url: string | null): string | null => {
     if (!url) return null;
     try {
@@ -521,8 +523,22 @@ const HistoryDetailView: React.FC<{
     }
   };
 
+  // v4.3: 解析图片URL数组（支持多张货物照片）
+  const parseImageUrls = (url: string | null): string[] => {
+    if (!url) return [];
+    try {
+      const parsed = JSON.parse(url);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return [url];
+    } catch {
+      return [url];
+    }
+  };
+
   const receiptImageUrl = parseImageUrl(item.receipt_image);
-  const goodsImageUrl = parseImageUrl(item.goods_image);
+  const goodsImageUrls = parseImageUrls(item.goods_image);  // v4.3: 多张货物照片
 
   return (
     <div className="h-full flex flex-col animate-slide-in relative overflow-hidden">
@@ -589,21 +605,30 @@ const HistoryDetailView: React.FC<{
           </div>
         </GlassCard>
 
-        {/* 图片预览 */}
-        {(receiptImageUrl || goodsImageUrl) && (
+        {/* 图片预览 - v4.3: 支持多张货物照片 */}
+        {(receiptImageUrl || goodsImageUrls.length > 0) && (
           <GlassCard padding="lg">
             <h3 className="text-base font-bold text-primary mb-4">凭证图片</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-4">
               {receiptImageUrl && (
                 <div>
                   <p className="text-xs text-muted mb-2">收货单</p>
                   <img src={receiptImageUrl} alt="收货单" className="w-full rounded-lg object-cover" />
                 </div>
               )}
-              {goodsImageUrl && (
+              {goodsImageUrls.length > 0 && (
                 <div>
-                  <p className="text-xs text-muted mb-2">货物照片</p>
-                  <img src={goodsImageUrl} alt="货物照片" className="w-full rounded-lg object-cover" />
+                  <p className="text-xs text-muted mb-2">货物照片 ({goodsImageUrls.length}张)</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {goodsImageUrls.map((url, index) => (
+                      <img
+                        key={index}
+                        src={url}
+                        alt={`货物照片 ${index + 1}`}
+                        className="w-full rounded-lg object-cover"
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
