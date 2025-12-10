@@ -1,6 +1,10 @@
 /**
  * 上传队列服务
- * v1.0 - 初始版本：实现本地队列管理、后台上传、失败重试
+ * v1.1 - 添加 AI 使用统计支持（use_ai_photo, use_ai_voice）
+ *
+ * 变更历史：
+ * - v1.1: addToQueue/addToUploadQueue 支持传入 aiUsage 统计
+ * - v1.0: 初始版本：实现本地队列管理、后台上传、失败重试
  *
  * 功能：
  * - 支持添加采购记录到上传队列（立即返回，后台上传）
@@ -11,7 +15,7 @@
  */
 
 import { DailyLog } from '../types';
-import { submitProcurement, SubmitResult } from './inventoryService';
+import { submitProcurement, SubmitResult, AiUsageStats } from './inventoryService';
 
 // ============ 类型定义 ============
 
@@ -26,6 +30,7 @@ export interface QueueItem {
   data: Omit<DailyLog, 'id'>;          // 原始数据
   storeId: string;                     // 门店ID
   employeeId: string;                  // 员工ID
+  aiUsage?: AiUsageStats;              // v1.1: AI 使用统计
   error?: string;                      // 失败原因
   result?: SubmitResult;               // 提交结果
 }
@@ -56,11 +61,13 @@ class UploadQueueManager {
 
   /**
    * 添加新项到队列
+   * v1.1 - 支持传入 AI 使用统计
    */
   addToQueue(
     data: Omit<DailyLog, 'id'>,
     storeId: string,
-    employeeId: string
+    employeeId: string,
+    aiUsage?: AiUsageStats
   ): string {
     const id = this.generateId();
     const now = Date.now();
@@ -74,6 +81,7 @@ class UploadQueueManager {
       data,
       storeId,
       employeeId,
+      aiUsage,
     };
 
     this.queue.push(item);
@@ -247,11 +255,13 @@ class UploadQueueManager {
     try {
       console.log(`[队列] 上传中: ${item.id} (重试次数: ${item.retryCount})`);
 
-      // 调用提交服务
+      // v1.1: 调用提交服务，传入 AI 使用统计
       const result = await submitProcurement(
         item.data,
         item.storeId,
-        item.employeeId
+        item.employeeId,
+        undefined,        // onProgress 回调不需要
+        item.aiUsage      // AI 使用统计
       );
 
       if (result.success) {
@@ -374,13 +384,15 @@ export const uploadQueueService = new UploadQueueManager();
 
 /**
  * 添加到上传队列
+ * v1.1 - 支持传入 AI 使用统计
  */
 export function addToUploadQueue(
   data: Omit<DailyLog, 'id'>,
   storeId: string,
-  employeeId: string
+  employeeId: string,
+  aiUsage?: AiUsageStats
 ): string {
-  return uploadQueueService.addToQueue(data, storeId, employeeId);
+  return uploadQueueService.addToQueue(data, storeId, employeeId, aiUsage);
 }
 
 /**

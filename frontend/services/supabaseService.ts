@@ -1,10 +1,12 @@
 /**
  * Supabase 数据库服务
+ * v3.7 - 添加 use_ai_photo 和 use_ai_voice 字段，追踪 AI 功能使用情况
  * v3.6 - 添加分类API，getCategories() 从数据库读取分类
  * v3.5 - 添加供应商品牌过滤，getSuppliers() 支持 brandCode 参数
  * v3.4 - 添加 brandCode 品牌过滤，支持按品牌加载物料
  *
  * 变更历史：
+ * - v3.7: createPurchasePrices 支持 use_ai_photo/use_ai_voice 字段写入
  * - v3.6: 新增 getCategories() 从数据库读取物料分类，支持品牌过滤
  * - v3.5: getSuppliers() 支持 brandCode 参数，用于按品牌过滤供应商
  * - v3.4: getProducts() 支持 brandCode 参数，用于按品牌过滤物料
@@ -74,7 +76,8 @@ export interface Category {
   brand_code?: string | null;
 }
 
-// v3.0 - 简化的采购价格记录
+// v3.7 - 添加 use_ai_photo 和 use_ai_voice 字段，追踪 AI 功能使用情况
+// v3.6 - 添加 specification 字段，与 notes 分开存储
 export interface StorePurchasePrice {
   id?: number;
   store_id: string;           // UUID - 门店
@@ -90,8 +93,11 @@ export interface StorePurchasePrice {
   goods_image?: string;       // 货物图片 URL
   price_date: string;         // 采购日期
   supplier_name?: string;     // "其他"供应商时的名称
+  specification?: string;     // v3.6: 物料规格（如 150g/包、500ml/瓶）
   notes?: string;             // 备注
   status?: string;            // pending/approved/rejected
+  use_ai_photo?: number;      // v3.7: AI 识图功能使用次数
+  use_ai_voice?: number;      // v3.7: 语音识别功能使用次数
 }
 
 // ============ 分类 API ============
@@ -374,6 +380,7 @@ export async function matchUnit(unitName: string): Promise<UnitOfMeasure | null>
 
 /**
  * 创建采购价格记录
+ * v3.7 - 支持 use_ai_photo/use_ai_voice 字段
  */
 export async function createPurchasePrice(data: StorePurchasePrice): Promise<StorePurchasePrice> {
   const { data: result, error } = await supabase
@@ -392,8 +399,11 @@ export async function createPurchasePrice(data: StorePurchasePrice): Promise<Sto
       goods_image: data.goods_image || null,
       price_date: data.price_date,
       supplier_name: data.supplier_name || null,
+      specification: data.specification || null,
       notes: data.notes || null,
       status: data.status || 'pending',
+      use_ai_photo: data.use_ai_photo || 0,
+      use_ai_voice: data.use_ai_voice || 0,
     })
     .select()
     .single();
@@ -408,6 +418,7 @@ export async function createPurchasePrice(data: StorePurchasePrice): Promise<Sto
 
 /**
  * 批量创建采购价格记录
+ * v3.7 - 支持 use_ai_photo/use_ai_voice 字段
  */
 export async function createPurchasePrices(records: StorePurchasePrice[]): Promise<StorePurchasePrice[]> {
   const { data: results, error } = await supabase
@@ -426,8 +437,11 @@ export async function createPurchasePrices(records: StorePurchasePrice[]): Promi
       goods_image: r.goods_image || null,
       price_date: r.price_date,
       supplier_name: r.supplier_name || null,
+      specification: r.specification || null,
       notes: r.notes || null,
       status: r.status || 'pending',
+      use_ai_photo: r.use_ai_photo || 0,
+      use_ai_voice: r.use_ai_voice || 0,
     })))
     .select();
 

@@ -1,8 +1,10 @@
 /**
  * 入库数据提交服务
- * v3.5 - "其他"供应商自动入库到 ims_ref_supplier
+ * v3.7 - 添加 use_ai_photo 和 use_ai_voice 字段，追踪 AI 功能使用情况
  *
  * 变更历史：
+ * - v3.7: submitProcurement 新增 useAiPhoto/useAiVoice 参数
+ * - v3.6: specification 字段独立存储，notes 字段用于整单备注
  * - v3.5: 选择"其他"并输入新供应商名称时，自动创建到数据库
  * - v3.4: 产品匹配严格模式，必须从下拉列表选择产品（有 productId）
  * - v3.3: receiptImages 改为数组，支持多张收货单上传
@@ -52,20 +54,31 @@ export type OnProgressCallback = (progress: SubmitProgress) => void;
 // ============ 主提交函数 ============
 
 /**
+ * AI 使用统计参数
+ * v3.7 - 新增
+ */
+export interface AiUsageStats {
+  useAiPhoto?: number;   // AI 识图功能使用次数
+  useAiVoice?: number;   // 语音识别功能使用次数
+}
+
+/**
  * 提交采购数据到数据库
- * v3.2 - 添加进度回调
+ * v3.7 - 添加 AI 使用统计参数
  *
  * @param dailyLog - 前端录入的日志数据
  * @param storeId - 门店 UUID
  * @param employeeId - 员工 UUID
  * @param onProgress - 进度回调函数（可选）
+ * @param aiUsage - AI 使用统计（可选）
  * @returns 提交结果
  */
 export async function submitProcurement(
   dailyLog: Omit<DailyLog, 'id'>,
   storeId: string,
   employeeId: string,
-  onProgress?: OnProgressCallback
+  onProgress?: OnProgressCallback,
+  aiUsage?: AiUsageStats
 ): Promise<SubmitResult> {
   const result: SubmitResult = {
     success: false,
@@ -214,6 +227,7 @@ export async function submitProcurement(
     }
 
     // 构建记录
+    // v3.7: 添加 AI 使用统计字段
     const record: StorePurchasePrice = {
       store_id: storeId,
       created_by: employeeId,
@@ -229,8 +243,11 @@ export async function submitProcurement(
       goods_image: goodsImageUrl,
       price_date: priceDate,
       supplier_name: supplierName,
-      notes: item.specification || undefined,
+      specification: item.specification || undefined,  // v3.6: 物品规格
+      notes: dailyLog.notes || undefined,              // v3.6: 整单备注
       status: 'pending',
+      use_ai_photo: aiUsage?.useAiPhoto || 0,          // v3.7: AI 识图使用次数
+      use_ai_voice: aiUsage?.useAiVoice || 0,          // v3.7: 语音识别使用次数
     };
 
     records.push(record);

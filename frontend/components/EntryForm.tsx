@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v4.6 - 添加 AI 使用追踪（use_ai_photo, use_ai_voice）
 // v4.5 - 使用新的彩色分类图标（Steak, Carrot, Seasoning, WineGlass 等）
 // v4.4 - 分类从数据库动态读取（ims_ref_category），支持品牌过滤
 // v4.3 - 修复浮点数精度问题（如单价4.1乘数量时总价出现无限循环9）
@@ -1060,6 +1061,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
   const [showTranscription, setShowTranscription] = useState(false);
   const [isSendingTranscription, setIsSendingTranscription] = useState(false);
 
+  // v4.6: AI 使用统计
+  const [useAiPhotoCount, setUseAiPhotoCount] = useState(0);  // AI 识图使用次数
+  const [useAiVoiceCount, setUseAiVoiceCount] = useState(0);  // 语音识别使用次数
+
   // v3.3: 获取当前表单数据（用于传递给 AI 进行修改）
   const getCurrentFormData = (): VoiceEntryResult => {
     // 只包含有效的物品（名称非空）
@@ -1122,7 +1127,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     }
   };
 
-  // v3.3: 手动发送文本进行解析（支持修改模式）
+  // v4.6: 手动发送文本进行解析（支持修改模式）+ 语音使用次数追踪
   const handleSendTranscription = async () => {
     if (!transcriptionText.trim() || isSendingTranscription) return;
 
@@ -1142,6 +1147,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
       );
 
       if (result) {
+        // v4.6: 增加语音识别使用次数
+        setUseAiVoiceCount(prev => prev + 1);
         // v3.3: 如果有现有数据，使用替换模式；否则使用添加模式
         if (hasExistingItems) {
           replaceFormWithResult(result);
@@ -1348,7 +1355,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     setReceiptImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  // v3.5: AI识别按钮点击处理（支持多张图片批量识别）
+  // v4.6: AI识别按钮点击处理（支持多张图片批量识别）+ 使用次数追踪
   const handleAIRecognize = async () => {
     // 找出未识别的图片
     const unrecognizedImages = receiptImages.filter(img => !img.recognized);
@@ -1368,6 +1375,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
         if (result) {
           console.log(`[AI识别] 第 ${i + 1} 张识别成功:`, result);
           successCount++;
+          // v4.6: 增加 AI 识图使用次数
+          setUseAiPhotoCount(prev => prev + 1);
           // 使用与语音录入相同的表单填充逻辑（追加模式）
           fillFormWithResult(result);
           // 标记该图片已识别
@@ -1578,7 +1587,7 @@ ${productList}
   };
 
 
-  // v4.1: 确认提交直接加入队列（后台上传，用户无需等待）
+  // v4.6: 确认提交直接加入队列（后台上传，用户无需等待）+ AI 使用统计
   const handleSummaryConfirm = () => {
     const validItems = items.filter(i => i.name.trim() !== '');
 
@@ -1596,9 +1605,16 @@ ${productList}
       goodsImage: goodsImage || undefined,
     };
 
+    // v4.6: 构建 AI 使用统计
+    const aiUsage = {
+      useAiPhoto: useAiPhotoCount,
+      useAiVoice: useAiVoiceCount,
+    };
+    console.log(`[提交] AI 使用统计: 识图=${useAiPhotoCount}次, 语音=${useAiVoiceCount}次`);
+
     // 添加到队列
     if (storeId && employeeId) {
-      const queueId = addToUploadQueue(logData, storeId, employeeId);
+      const queueId = addToUploadQueue(logData, storeId, employeeId, aiUsage);
       console.log(`[队列] 任务已加入队列: ${queueId}`);
 
       // 显示成功提示
@@ -1624,6 +1640,9 @@ ${productList}
             setSubmitMessage('');
             setSubmitProgress(null);
             setCountdown(0);
+            // v4.6: 重置 AI 使用计数
+            setUseAiPhotoCount(0);
+            setUseAiVoiceCount(0);
             // 跳转回首页
             onSave(logData);
             return 0;
@@ -1655,6 +1674,9 @@ ${productList}
     setNotes('');
     setReceiptImages([]);
     setGoodsImage(null);
+    // v4.6: 重置 AI 使用计数
+    setUseAiPhotoCount(0);
+    setUseAiVoiceCount(0);
     // 构建 logData 并调用 onSave 跳转
     const logData: Omit<DailyLog, 'id'> = {
       date: new Date().toISOString(),
