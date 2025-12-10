@@ -1,5 +1,6 @@
 /**
  * QueueHistoryPage - 采购记录页面
+ * v4.4 - 重新上传防止重复点击 + 点击后返回列表并显示上传中状态
  * v4.3 - 支持显示多张货物照片（历史详情页）
  * v4.2 - 添加门店隔离，只显示本门店的采购记录
  * v4.1 - 修复收货单图片加载（解析JSON数组格式的URL）
@@ -13,6 +14,7 @@
  * - 懒加载：滚动到底部自动加载更多
  * - 门店隔离：只能查看和删除本门店的记录
  * - 支持显示多张货物照片
+ * - 重新上传防止重复点击，自动返回列表并显示上传中状态
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -339,9 +341,13 @@ const QueueDetailView: React.FC<{
 
   const isEditable = item.status === 'failed';
 
+  // v4.4: 重新上传 - 防止重复点击 + 返回列表显示上传中状态
   const handleResubmit = async () => {
-    if (!isEditable) return;
+    // 防止重复点击
+    if (!isEditable || isResubmitting) return;
+
     setIsResubmitting(true);
+
     const newData = {
       ...item.data,
       supplier: editedSupplier,
@@ -349,8 +355,12 @@ const QueueDetailView: React.FC<{
       items: editedItems,
       totalCost: editedItems.reduce((sum, i) => sum + (i.total || 0), 0),
     };
+
+    // 更新队列数据，状态会自动变为 pending，然后队列服务会自动处理上传
     uploadQueueService.updateQueueItemData(item.id, newData);
-    setIsResubmitting(false);
+
+    // 立即返回列表页，让用户看到状态变化（pending -> uploading）
+    // 不需要 setIsResubmitting(false)，因为马上就离开这个页面了
     onBack();
   };
 
@@ -477,10 +487,23 @@ const QueueDetailView: React.FC<{
               <Icons.X className="w-5 h-5" /><span>删除</span>
             </button>
             <button onClick={handleResubmit} disabled={isResubmitting}
-              className="flex-1 py-4 rounded-2xl text-white font-semibold border border-ios-blue/30 flex items-center justify-center gap-2"
+              className={`flex-1 py-4 rounded-2xl text-white font-semibold border flex items-center justify-center gap-2 transition-all ${
+                isResubmitting
+                  ? 'border-white/20 opacity-70 cursor-not-allowed'
+                  : 'border-ios-blue/30 active:scale-[0.98]'
+              }`}
               style={{ background: 'linear-gradient(135deg, rgba(91,163,192,0.3) 0%, rgba(91,163,192,0.15) 100%)', backdropFilter: 'blur(40px)' }}>
-              {isResubmitting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Icons.Check className="w-5 h-5" />}
-              <span>重新上传</span>
+              {isResubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>提交中...</span>
+                </>
+              ) : (
+                <>
+                  <Icons.Check className="w-5 h-5" />
+                  <span>重新上传</span>
+                </>
+              )}
             </button>
           </div>
         ) : (
