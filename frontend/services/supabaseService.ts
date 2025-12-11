@@ -702,6 +702,7 @@ export type DateFilterType = 'today' | 'week' | 'month' | 'all';
  * @param dateFilter 日期筛选类型
  * @returns 历史记录列表
  */
+// v5.0: 修复供应商名称显示 - 通过 supplier_id 关联 ims_ref_supplier 表获取名称
 export async function getProcurementHistory(
   page: number = 0,
   pageSize: number = 20,
@@ -711,9 +712,10 @@ export async function getProcurementHistory(
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
+  // v5.0: 使用关联查询获取供应商名称
   let query = supabase
     .from('ims_material_price')
-    .select('*', { count: 'exact' })
+    .select('*, ims_ref_supplier(name)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(from, to);
 
@@ -760,11 +762,12 @@ export async function getProcurementHistory(
   const total = count || 0;
   const hasMore = (from + (data?.length || 0)) < total;
 
+  // v5.0: 优先使用关联查询的供应商名称，其次使用 supplier_name 字段
   return {
     data: (data || []).map(item => ({
       id: item.id,
       item_name: item.item_name,
-      supplier_name: item.supplier_name,
+      supplier_name: item.ims_ref_supplier?.name || item.supplier_name,
       quantity: parseFloat(item.quantity) || 0,
       unit: item.unit,
       unit_price: parseFloat(item.unit_price) || 0,

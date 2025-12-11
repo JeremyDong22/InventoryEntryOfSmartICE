@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v5.0 - 员工餐分类特殊处理：固定物料/单位，禁用AI识别/语音，只允许单条
 // v4.8 - 收货单照片添加"需为同一供货商"提示 + 供应商/备注增加一键清除按钮
 // v4.7 - 货物照片支持批量添加多张（称重核对留证）
 // v4.6 - 添加 AI 使用追踪（use_ai_photo, use_ai_voice）
@@ -60,6 +61,7 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   '客用物资': Icons.Towel,
   '糖水铺': Icons.DessertBowl,
   '海鲜/水产': Icons.Fish,
+  '员工餐': Icons.StaffMeal,
 };
 const DEFAULT_CATEGORY_ICON = Icons.Cube;
 
@@ -261,6 +263,7 @@ const CategoryScreen: React.FC<{
 
 // --- Worksheet Screen ---
 
+// v5.0 - 添加 selectedCategory prop，员工餐分类特殊处理
 // v4.7 - goodsImages 改为数组，支持多张货物照片（称重核对留证）
 // v3.5 - receiptImages 改为数组，支持多张收货单，AI识别按钮移至图片下方
 // v3.4 - 修改 props：移除 aiAutoFill 开关，改为 isRecognizing + onAIRecognize 按钮
@@ -280,6 +283,7 @@ const WorksheetScreen: React.FC<{
   transcriptionText: string;
   showTranscription: boolean;
   isSendingTranscription: boolean;
+  selectedCategory: string;  // v5.0: 当前选中的分类
   onBack: () => void;
   onSupplierChange: (val: string) => void;
   onSupplierOtherChange: (val: string) => void;
@@ -300,11 +304,13 @@ const WorksheetScreen: React.FC<{
   onReview: () => void;
 }> = ({
   items, supplier, supplierOther, notes, isAnalyzing, isRecognizing, grandTotal, receiptImages, goodsImages,
-  voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription,
+  voiceStatus, voiceMessage, transcriptionText, showTranscription, isSendingTranscription, selectedCategory,
   onBack, onSupplierChange, onSupplierOtherChange, onNotesChange, onItemChange, onProductSelect, onAddItem, onRemoveItem,
   onReceiptImageUpload, onGoodsImageUpload, onRemoveReceiptImage, onRemoveGoodsImage, onAIRecognize,
   onVoiceStart, onVoiceStop, onTranscriptionChange, onSendTranscription, onReview
 }) => {
+  // v5.0: 员工餐分类特殊模式
+  const isStaffMealMode = selectedCategory === '员工餐';
   const receiptInputRef = useRef<HTMLInputElement>(null);
   const goodsInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -407,7 +413,8 @@ const WorksheetScreen: React.FC<{
                 </button>
               </div>
               {/* v3.5: AI识别按钮 - 有未识别图片时显示，独立一行 */}
-              {receiptImages.length > 0 && receiptImages.some(img => !img.recognized) && (
+              {/* v5.0: 员工餐模式下不显示AI识别按钮 */}
+              {!isStaffMealMode && receiptImages.length > 0 && receiptImages.some(img => !img.recognized) && (
                 <button
                   onClick={onAIRecognize}
                   disabled={isRecognizing}
@@ -504,12 +511,13 @@ const WorksheetScreen: React.FC<{
           </div>
 
           {/* 供应商选择 + "其他"选项 */}
+          {/* v5.0: 员工餐模式下显示固定供应商文本 */}
           <div>
             <div className="flex items-center justify-between mb-2 ml-1">
               <label className="text-[20px] tracking-wider text-zinc-500 font-bold">
                 供应商全称
               </label>
-              {supplier && (
+              {!isStaffMealMode && supplier && (
                 <button
                   type="button"
                   onClick={() => onSupplierChange('')}
@@ -520,20 +528,26 @@ const WorksheetScreen: React.FC<{
                 </button>
               )}
             </div>
-            <AutocompleteInput
-              value={supplier}
-              onChange={onSupplierChange}
-              placeholder="输入供应商名称或选择'其他'"
-              searchFn={searchSuppliers}
-              debounceMs={300}
-              minChars={1}
-              extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
-              showDropdownButton={true}
-              getAllOptionsFn={getAllSuppliersAsOptions}
-            />
+            {isStaffMealMode ? (
+              <div className="w-full py-3 px-4 rounded-lg bg-white/5 border border-white/10">
+                <span className="text-sm text-white/60">员工餐</span>
+              </div>
+            ) : (
+              <AutocompleteInput
+                value={supplier}
+                onChange={onSupplierChange}
+                placeholder="输入供应商名称或选择'其他'"
+                searchFn={searchSuppliers}
+                debounceMs={300}
+                minChars={1}
+                extraOptions={[{ id: 'other', label: '其他', value: '其他', sublabel: '手动输入供应商' }]}
+                showDropdownButton={true}
+                getAllOptionsFn={getAllSuppliersAsOptions}
+              />
+            )}
           </div>
           {/* "其他"供应商输入框 - 仅当选择"其他"时显示，新供应商自动入库 */}
-          {supplier === '其他' && (
+          {!isStaffMealMode && supplier === '其他' && (
             <div className="animate-slide-in">
               <label className="block text-[16px] tracking-wider text-zinc-500 font-bold mb-2 ml-1">
                 请输入供应商名称
@@ -586,64 +600,89 @@ const WorksheetScreen: React.FC<{
               <GlassCard key={index} padding="md" className="relative group">
                  {/* Top Row: Name & Delete */}
                  <div className="flex items-start justify-between mb-4">
-                    <AutocompleteInput
-                      value={item.name}
-                      onChange={(val) => onItemChange(index, 'name', val)}
-                      placeholder="商品名称"
-                      searchFn={searchProducts}
-                      variant="inline"
-                      inputClassName="text-[13px] font-bold text-primary placeholder-muted"
-                      debounceMs={250}
-                      minChars={1}
-                      showDropdownButton={true}
-                      getAllOptionsFn={getAllProductsAsOptions}
-                      onSelect={(option) => onProductSelect(index, option)}
-                    />
-                    <button
-                      onClick={() => onRemoveItem(index)}
-                      className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-ios-red hover:bg-ios-red/10 transition-all ml-2"
-                    >
-                      <Icons.Trash className="w-4 h-4" />
-                    </button>
+                    {/* v5.0: 员工餐模式下显示固定文本，普通模式下显示自动完成输入框 */}
+                    {isStaffMealMode ? (
+                      <div className="flex-1 py-2 px-3 rounded-lg bg-white/5 border border-white/10">
+                        <span className="text-[13px] font-bold text-primary">员工餐</span>
+                      </div>
+                    ) : (
+                      <AutocompleteInput
+                        value={item.name}
+                        onChange={(val) => onItemChange(index, 'name', val)}
+                        placeholder="商品名称"
+                        searchFn={searchProducts}
+                        variant="inline"
+                        inputClassName="text-[13px] font-bold text-primary placeholder-muted"
+                        debounceMs={250}
+                        minChars={1}
+                        showDropdownButton={true}
+                        getAllOptionsFn={getAllProductsAsOptions}
+                        onSelect={(option) => onProductSelect(index, option)}
+                      />
+                    )}
+                    {/* v5.0: 员工餐模式下隐藏删除按钮（只有一个物品） */}
+                    {!isStaffMealMode && (
+                      <button
+                        onClick={() => onRemoveItem(index)}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40 hover:text-ios-red hover:bg-ios-red/10 transition-all ml-2"
+                      >
+                        <Icons.Trash className="w-4 h-4" />
+                      </button>
+                    )}
                  </div>
 
                  {/* Grid Row: Data Inputs */}
-                 <div className="grid grid-cols-12 gap-2">
-                    {/* Packaging */}
-                    <div className="col-span-3">
-                        <label className="block text-[9px] text-muted mb-1 text-center">规格</label>
-                        <input
-                            type="text"
-                            value={item.specification || ''}
-                            onChange={(e) => onItemChange(index, 'specification', e.target.value)}
-                            placeholder="规格"
-                            className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50 placeholder:text-white/40"
-                        />
-                    </div>
-                    {/* Unit - v2.4: 改为自由文本输入（不使用自动完成） */}
-                    <div className="col-span-2">
+                 {/* v5.0: 员工餐模式下简化布局（移除规格和单位列，因为不需要显示） */}
+                 <div className={`grid gap-2 ${isStaffMealMode ? 'grid-cols-9' : 'grid-cols-12'}`}>
+                    {/* Packaging - v5.0: 员工餐模式下隐藏 */}
+                    {!isStaffMealMode && (
+                      <div className="col-span-3">
+                          <label className="block text-[9px] text-muted mb-1 text-center">规格</label>
+                          <input
+                              type="text"
+                              value={item.specification || ''}
+                              onChange={(e) => onItemChange(index, 'specification', e.target.value)}
+                              placeholder="规格"
+                              className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50 placeholder:text-white/40"
+                          />
+                      </div>
+                    )}
+                    {/* Unit - v5.0: 员工餐模式下显示固定"天"文本 */}
+                    <div className={isStaffMealMode ? 'col-span-2' : 'col-span-2'}>
                         <label className="block text-[9px] text-muted mb-1 text-center">单位</label>
-                        <input
-                            type="text"
-                            value={item.unit || ''}
-                            onChange={(e) => onItemChange(index, 'unit', e.target.value)}
-                            placeholder="单位"
-                            className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50 placeholder:text-white/40"
-                        />
+                        {isStaffMealMode ? (
+                          <div className="w-full bg-white/5 border border-white/10 rounded-glass-sm py-2 text-center text-sm text-white/60">
+                            天
+                          </div>
+                        ) : (
+                          <input
+                              type="text"
+                              value={item.unit || ''}
+                              onChange={(e) => onItemChange(index, 'unit', e.target.value)}
+                              placeholder="单位"
+                              className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-secondary outline-none focus:border-ember-rock/50 placeholder:text-white/40"
+                          />
+                        )}
                     </div>
-                    {/* Qty */}
-                    <div className="col-span-2">
+                    {/* Qty - v5.0: 员工餐模式下固定为1 */}
+                    <div className={isStaffMealMode ? 'col-span-2' : 'col-span-2'}>
                         <label className="block text-[9px] text-muted mb-1 text-center">数量</label>
-                        <input
-                            type="number"
-                            value={item.quantity || ''}
-                            onChange={(e) => onItemChange(index, 'quantity', e.target.value)}
-                            placeholder="数量"
-                            className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-primary font-medium outline-none focus:border-ember-rock/50 placeholder:text-white/40"
-                        />
+                        {isStaffMealMode ? (
+                          <div className="w-full bg-white/5 border border-white/10 rounded-glass-sm py-2 text-center text-sm text-white/60">
+                            1
+                          </div>
+                        ) : (
+                          <input
+                              type="number"
+                              value={item.quantity || ''}
+                              onChange={(e) => onItemChange(index, 'quantity', e.target.value)}
+                              placeholder="数量"
+                              className="w-full bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)] rounded-glass-sm py-2 text-center text-sm text-primary font-medium outline-none focus:border-ember-rock/50 placeholder:text-white/40"
+                          />
+                        )}
                     </div>
                     {/* Price */}
-                    <div className="col-span-2">
+                    <div className={isStaffMealMode ? 'col-span-2' : 'col-span-2'}>
                         <label className="block text-[9px] text-muted mb-1 text-center">单价</label>
                         <input
                             type="number"
@@ -654,7 +693,7 @@ const WorksheetScreen: React.FC<{
                         />
                     </div>
                     {/* Subtotal - v2.1: 可编辑，支持输入总价反算单价 */}
-                    <div className="col-span-3">
+                    <div className={isStaffMealMode ? 'col-span-3' : 'col-span-3'}>
                         <label className="block text-[9px] text-muted mb-1 text-center">总价</label>
                         <input
                             type="number"
@@ -668,14 +707,16 @@ const WorksheetScreen: React.FC<{
               </GlassCard>
             ))}
 
-            {/* Inline Add Button */}
-            <button
-                onClick={onAddItem}
-                className="w-full py-4 rounded-glass-xl border-2 border-dashed border-[rgba(180,160,140,0.25)] text-secondary hover:text-harbor-blue hover:border-harbor-blue/30 hover:bg-harbor-blue/5 transition-all flex items-center justify-center gap-2 group active:scale-[0.99]"
-            >
-                <Icons.PlusCircle className="w-5 h-5 group-hover:text-harbor-blue transition-colors" />
-                <span className="font-medium text-sm">添加物品</span>
-            </button>
+            {/* Inline Add Button - v5.0: 员工餐模式下隐藏 */}
+            {!isStaffMealMode && (
+              <button
+                  onClick={onAddItem}
+                  className="w-full py-4 rounded-glass-xl border-2 border-dashed border-[rgba(180,160,140,0.25)] text-secondary hover:text-harbor-blue hover:border-harbor-blue/30 hover:bg-harbor-blue/5 transition-all flex items-center justify-center gap-2 group active:scale-[0.99]"
+              >
+                  <Icons.PlusCircle className="w-5 h-5 group-hover:text-harbor-blue transition-colors" />
+                  <span className="font-medium text-sm">添加物品</span>
+              </button>
+            )}
 
             {/* v1.7: 提交按钮移到这里，和物品列表同层级 */}
             <button
@@ -696,87 +737,92 @@ const WorksheetScreen: React.FC<{
         </div>
       </div>
 
-      {/* Gradient fade overlay above voice bar - creates smooth content fade effect */}
-      <div
-        className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-40"
-        style={{
-          background: 'linear-gradient(to bottom, transparent 0%, rgba(20, 20, 25, 0.7) 50%, rgba(20, 20, 25, 0.95) 100%)'
-        }}
-      />
+      {/* v5.0: 员工餐模式下隐藏语音录入栏 */}
+      {!isStaffMealMode && (
+        <>
+          {/* Gradient fade overlay above voice bar - creates smooth content fade effect */}
+          <div
+            className="fixed bottom-0 left-0 right-0 h-32 pointer-events-none z-40"
+            style={{
+              background: 'linear-gradient(to bottom, transparent 0%, rgba(20, 20, 25, 0.7) 50%, rgba(20, 20, 25, 0.95) 100%)'
+            }}
+          />
 
-      {/* Floating Action Island - Storm Glass with Integrated Voice Display */}
-      {/* v1.7: 简化底部栏，只保留语音按钮和文本显示 */}
-      <div className="fixed bottom-6 left-4 right-4 z-50 safe-area-bottom">
-        <div className="p-2 rounded-2xl border border-white/10"
-             style={{
-               background: 'rgba(30, 30, 35, 0.75)',
-               backdropFilter: 'blur(40px) saturate(180%)',
-               WebkitBackdropFilter: 'blur(40px) saturate(180%)',
-               boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-             }}>
+          {/* Floating Action Island - Storm Glass with Integrated Voice Display */}
+          {/* v1.7: 简化底部栏，只保留语音按钮和文本显示 */}
+          <div className="fixed bottom-6 left-4 right-4 z-50 safe-area-bottom">
+            <div className="p-2 rounded-2xl border border-white/10"
+                 style={{
+                   background: 'rgba(30, 30, 35, 0.75)',
+                   backdropFilter: 'blur(40px) saturate(180%)',
+                   WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                   boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                 }}>
 
-           {/* Main Row: Voice Button + Text Box (no submit button here) */}
-           <div className="flex items-start gap-2">
-             {/* v3.0: file inputs moved to image upload section */}
+               {/* Main Row: Voice Button + Text Box (no submit button here) */}
+               <div className="flex items-start gap-2">
+                 {/* v3.0: file inputs moved to image upload section */}
 
-             {/* v1.7: 只保留语音按钮 */}
-             <div className="flex items-center">
-               {/* Voice Recording Button - Start or Stop */}
-               {voiceStatus === 'recording' ? (
-                 /* Stop Button - Red circle with white square SVG */
-                 <button
-                   onClick={onVoiceStop}
-                   className="w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 flex-shrink-0"
-                 >
-                   <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-                     <circle cx="14" cy="14" r="13" stroke="#ef4444" strokeWidth="2" className="animate-pulse" style={{ filter: 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.6))' }} />
-                     <rect x="9" y="9" width="10" height="10" rx="1.5" fill="white" />
-                   </svg>
-                 </button>
-               ) : (
-                 /* Microphone Button - v3.9: 支持 preparing 状态 */
-                 <button
-                   onClick={onVoiceStart}
-                   disabled={isAnalyzing || voiceStatus === 'processing' || voiceStatus === 'preparing'}
-                   className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40 flex-shrink-0"
-                 >
-                   {(voiceStatus === 'processing' || voiceStatus === 'preparing') ? (
-                     <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                 {/* v1.7: 只保留语音按钮 */}
+                 <div className="flex items-center">
+                   {/* Voice Recording Button - Start or Stop */}
+                   {voiceStatus === 'recording' ? (
+                     /* Stop Button - Red circle with white square SVG */
+                     <button
+                       onClick={onVoiceStop}
+                       className="w-11 h-11 rounded-xl flex items-center justify-center transition-all active:scale-95 flex-shrink-0"
+                     >
+                       <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+                         <circle cx="14" cy="14" r="13" stroke="#ef4444" strokeWidth="2" className="animate-pulse" style={{ filter: 'drop-shadow(0 0 6px rgba(239, 68, 68, 0.6))' }} />
+                         <rect x="9" y="9" width="10" height="10" rx="1.5" fill="white" />
+                       </svg>
+                     </button>
                    ) : (
-                     <Icons.Microphone className="w-5 h-5" />
+                     /* Microphone Button - v3.9: 支持 preparing 状态 */
+                     <button
+                       onClick={onVoiceStart}
+                       disabled={isAnalyzing || voiceStatus === 'processing' || voiceStatus === 'preparing'}
+                       className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40 flex-shrink-0"
+                     >
+                       {(voiceStatus === 'processing' || voiceStatus === 'preparing') ? (
+                         <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                       ) : (
+                         <Icons.Microphone className="w-5 h-5" />
+                       )}
+                     </button>
                    )}
-                 </button>
-               )}
 
-               {/* v1.7: 注释掉相机和文件上传按钮
-               <button
-                 onClick={() => cameraInputRef.current?.click()}
-                 disabled={isAnalyzing || voiceStatus === 'recording'}
-                 className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40"
-               >
-                 {isAnalyzing ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full"></div> : <Icons.Camera className="w-5 h-5" />}
-               </button>
-               <button
-                 onClick={() => fileInputRef.current?.click()}
-                 disabled={isAnalyzing || voiceStatus === 'recording'}
-                 className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40"
-               >
-                 <Icons.Folder className="w-5 h-5" />
-               </button>
-               */}
-             </div>
+                   {/* v1.7: 注释掉相机和文件上传按钮
+                   <button
+                     onClick={() => cameraInputRef.current?.click()}
+                     disabled={isAnalyzing || voiceStatus === 'recording'}
+                     className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40"
+                   >
+                     {isAnalyzing ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full"></div> : <Icons.Camera className="w-5 h-5" />}
+                   </button>
+                   <button
+                     onClick={() => fileInputRef.current?.click()}
+                     disabled={isAnalyzing || voiceStatus === 'recording'}
+                     className="w-11 h-11 rounded-xl flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors active:scale-95 disabled:opacity-40"
+                   >
+                     <Icons.Folder className="w-5 h-5" />
+                   </button>
+                   */}
+                 </div>
 
-             {/* v1.8: 可编辑文本框 + 发送按钮 */}
-             <TranscriptionBox
-               transcriptionText={transcriptionText}
-               voiceStatus={voiceStatus}
-               onTextChange={onTranscriptionChange}
-               onSend={onSendTranscription}
-               isSending={isSendingTranscription}
-             />
-           </div>
-        </div>
-      </div>
+                 {/* v1.8: 可编辑文本框 + 发送按钮 */}
+                 <TranscriptionBox
+                   transcriptionText={transcriptionText}
+                   voiceStatus={voiceStatus}
+                   onTextChange={onTranscriptionChange}
+                   onSend={onSendTranscription}
+                   isSending={isSendingTranscription}
+                 />
+               </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -1279,13 +1325,19 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     });
   }, []);
 
-  // v4.4: 分类选择现在使用分类名称（字符串）
+  // v5.0: 分类选择 - 员工餐分类预填固定值
   const handleCategorySelect = (categoryName: string) => {
     setSelectedCategory(categoryName);
-    // Initialize with empty form for production use
-    setSupplier('');
     setNotes('');
-    setItems([{ name: '', specification: '', quantity: 0, unit: '', unitPrice: 0, total: 0 }]);
+
+    // v5.0: 员工餐分类特殊处理 - 预填固定供应商、物料名称、单位、数量
+    if (categoryName === '员工餐') {
+      setSupplier('员工餐');
+      setItems([{ name: '员工餐', specification: '', quantity: 1, unit: '天', unitPrice: 0, total: 0 }]);
+    } else {
+      setSupplier('');
+      setItems([{ name: '', specification: '', quantity: 0, unit: '', unitPrice: 0, total: 0 }]);
+    }
     setStep('WORKSHEET');
   };
 
@@ -1757,6 +1809,7 @@ ${productList}
           transcriptionText={transcriptionText}
           showTranscription={showTranscription}
           isSendingTranscription={isSendingTranscription}
+          selectedCategory={selectedCategory}
           onBack={() => setStep('CATEGORY')}
           onSupplierChange={setSupplier}
           onSupplierOtherChange={setSupplierOther}

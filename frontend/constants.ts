@@ -452,4 +452,19 @@ export const Icons = {
     React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M2 12c1-2 2-3 2-3s-1 2-2 3zm0 0c1 2 2 3 2 3s-1-2-2-3z" }),
     React.createElement("circle", { cx: "16", cy: "11", r: "1", fill: "currentColor" }),
     React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M8 10c1 0 2 1 2 2s-1 2-2 2" })),
+
+  // v5.0: 员工餐 - 餐盘图标
+  StaffMeal: ({ className }: { className?: string }) =>
+    React.createElement("svg", {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 24 24",
+      fill: "none",
+      strokeWidth: 1.8,
+      stroke: "currentColor",
+      className: className
+    },
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M3 12h18" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M5 12c0-3.866 3.134-7 7-7s7 3.134 7 7" }),
+    React.createElement("path", { strokeLinecap: "round", strokeLinejoin: "round", d: "M4 12v1c0 2.761 3.582 5 8 5s8-2.239 8-5v-1" }),
+    React.createElement("ellipse", { cx: "12", cy: "18", rx: "3", ry: "1" })),
 };
