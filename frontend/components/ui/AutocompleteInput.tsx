@@ -1,8 +1,9 @@
 /**
  * 自动完成输入框组件
- * v3.1 - 使用 Portal 渲染下拉框，解决 GlassCard 层叠上下文覆盖问题
+ * v3.2 - inline 变体添加边框样式，与其他输入框保持一致
  *
  * 变更历史：
+ * - v3.2: inline 变体输入框容器添加边框样式（bg-cacao-husk/60 + 棕色边框）
  * - v3.1: 使用 createPortal 将下拉框渲染到 body，避免被 GlassCard 遮挡
  * - v3.0: 新增 showDropdownButton 倒三角按钮，点击可展开下拉列表
  * - v2.0: 新增 extraOptions 支持静态选项
@@ -295,8 +296,11 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
         </label>
       )}
 
-      {/* 输入框容器 */}
-      <div className="relative flex items-center">
+      {/* 输入框容器 - v3.2: inline 变体添加边框样式 */}
+      <div className={clsx(
+        'relative flex items-center',
+        variant === 'inline' && 'px-3 py-2 rounded-glass-sm bg-cacao-husk/60 border border-[rgba(138,75,47,0.3)]'
+      )}>
         <input
           ref={inputRef}
           type="text"
