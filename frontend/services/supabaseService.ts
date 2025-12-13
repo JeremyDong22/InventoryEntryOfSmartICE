@@ -1,5 +1,6 @@
 /**
  * Supabase 数据库服务
+ * v4.1 - getSuppliers 接受 brandCode 字符串参数，内部转换为 brand_id
  * v4.0 - 供应商表重命名 ims_ref_supplier → ims_supplier，品牌字段改为 brand_id 外键
  * v3.8 - 添加物料别名(aliases)支持，实现模糊匹配（如西红柿→番茄）
  * v3.7 - 添加 use_ai_photo 和 use_ai_voice 字段，追踪 AI 功能使用情况
@@ -8,6 +9,7 @@
  * v3.4 - 添加 brandCode 品牌过滤，支持按品牌加载物料
  *
  * 变更历史：
+ * - v4.1: getSuppliers() 参数改为 brandCode 字符串，内部自动转换为 brand_id
  * - v4.0: 供应商表重命名，brand_code → brand_id 外键，createOrGetSupplier 支持 brandId
  * - v3.8: Product 接口新增 aliases 字段，exactMatchProduct/searchProducts 支持别名匹配
  * - v3.7: createPurchasePrices 支持 use_ai_photo/use_ai_voice 字段写入
@@ -138,19 +140,38 @@ export async function getCategories(brandCode?: string): Promise<Category[]> {
 
 // ============ 供应商 API ============
 // v4.0 - 使用 ims_supplier 表，brand_id 外键
+// v4.1 - getSuppliers 接受 brandCode 字符串参数，内部转换为 brand_id
+
+// 品牌代码到品牌ID的映射（与 ims_brand 表对应）
+const BRAND_CODE_TO_ID: Record<string, number> = {
+  'YBL': 1,    // 野百灵
+  'NGX': 2,    // 宁桂杏
+  'COMMON': 3, // 通用
+};
+
+/**
+ * 将品牌代码转换为品牌ID
+ * @param brandCode 品牌代码 (YBL/NGX/COMMON)
+ * @returns 品牌ID，无效代码返回 undefined
+ */
+function brandCodeToId(brandCode?: string): number | undefined {
+  if (!brandCode) return undefined;
+  return BRAND_CODE_TO_ID[brandCode];
+}
 
 /**
  * 获取供应商列表（按品牌过滤）
- * v4.0 - 使用 brand_id 外键过滤，加载本品牌 + 通用(id=3) 供应商
- * @param brandId 可选品牌ID (1=野百灵, 2=宁桂杏, 3=通用)
+ * v4.1 - 接受 brandCode 字符串参数，内部转换为 brand_id
+ * @param brandCode 可选品牌代码 (YBL/NGX/COMMON)
  */
-export async function getSuppliers(brandId?: number): Promise<Supplier[]> {
+export async function getSuppliers(brandCode?: string): Promise<Supplier[]> {
   let query = supabase
     .from('ims_supplier')
     .select('id, name, contact_person, phone, is_active, brand_id')
     .eq('is_active', true);
 
-  // v4.0: 品牌过滤 - 加载本品牌 + 通用(id=3) 供应商
+  // v4.1: 品牌代码转 ID，加载本品牌 + 通用(id=3) 供应商
+  const brandId = brandCodeToId(brandCode);
   if (brandId) {
     query = query.or(`brand_id.eq.${brandId},brand_id.eq.3`);
   }
