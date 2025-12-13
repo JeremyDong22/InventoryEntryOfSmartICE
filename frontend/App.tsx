@@ -1,3 +1,5 @@
+// v4.3.0 - 添加版本检测，每 10 分钟轮询检查新版本并提示用户刷新
+// v4.2.0 - PreloadData 改为登录后加载，不再启动时加载
 // v4.1.0 - 添加 userNickname 支持，用于更亲切的问候语
 // v4.0.1 - 修复预加载无限循环，改为后台静默加载不阻塞UI
 // v4.0.0 - 添加上传队列历史记录页面（显示队列状态、支持失败重试）
@@ -13,11 +15,13 @@ import { EntryForm } from './components/EntryForm';
 import { LoginPage } from './components/LoginPage';
 import { ChangePasswordPage } from './components/ChangePasswordPage';
 import { QueueHistoryPage } from './components/QueueHistoryPage';
+import { UpdateBanner } from './components/ui/UpdateBanner';
 import { DailyLog, AppView } from './types';
 import { Icons } from './constants';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { PreloadDataProvider, usePreloadData } from './contexts/PreloadDataContext';
 import { getPurchaseLogs } from './services/dashboardService';
+import { startVersionCheck, stopVersionCheck } from './services/versionService';
 
 // 主应用内容（需要在 AuthProvider 内部使用）
 const AppContent: React.FC = () => {
@@ -28,6 +32,8 @@ const AppContent: React.FC = () => {
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // 版本更新提示状态
+  const [showUpdateBanner, setShowUpdateBanner] = useState(false);
 
   // 从数据库加载采购记录
   useEffect(() => {
@@ -49,6 +55,19 @@ const AppContent: React.FC = () => {
 
     loadLogs();
   }, [isAuthenticated, user?.store_id]);
+
+  // 版本检测：每 10 分钟检查一次新版本
+  useEffect(() => {
+    startVersionCheck((hasUpdate) => {
+      if (hasUpdate) {
+        setShowUpdateBanner(true);
+      }
+    });
+
+    return () => {
+      stopVersionCheck();
+    };
+  }, []);
 
   // 从认证上下文获取用户名和昵称
   const CURRENT_USER_NAME = user?.name || "用户";
@@ -99,6 +118,13 @@ const AppContent: React.FC = () => {
   // 已登录显示主应用
   return (
     <div className="fixed inset-0 flex text-primary font-sans overflow-hidden">
+      {/* 版本更新提示横幅 */}
+      <UpdateBanner
+        visible={showUpdateBanner}
+        onRefresh={() => window.location.reload()}
+        onDismiss={() => setShowUpdateBanner(false)}
+      />
+
       <Sidebar
         currentView={currentView}
         onChangeView={setCurrentView}

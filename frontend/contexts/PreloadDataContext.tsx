@@ -1,22 +1,23 @@
 /**
  * PreloadDataContext - 数据预加载上下文
+ * v2.0 - 登录触发加载：用户登录后才开始加载品牌相关数据
  * v1.6 - 使用 brand_id 外键过滤，移除 code→id 映射依赖
- * v1.5 - 品牌从数据库动态加载
- * v1.4 - 添加分类预加载，从数据库读取分类数据
  *
- * 功能：
- * - 应用启动时后台静默预加载所有下拉框数据
- * - 不阻塞页面渲染，用户可立即使用
- * - 使用 ref 防止重复加载
- * - 与 supabaseService.ts 共享缓存机制
+ * 变更历史：
+ * - v2.0: 监听 AuthContext，用户登录后才加载数据，登出时清空
  * - v1.6: 直接使用 user.brand_id 过滤，无需 code→id 映射
- * - v1.5: 先加载品牌数据
+ * - v1.5: 品牌从数据库动态加载
  * - v1.4: 新增分类预加载，支持品牌过滤
  *
+ * 流程：
+ * 1. 用户登录 → AuthContext 设置 user
+ * 2. PreloadDataContext 监听到 user 变化
+ * 3. 根据 user.brand_id 加载该品牌的分类、物料、供应商
+ * 4. 用户登出 → 清空所有预加载数据
+ *
  * 使用方式：
- * 1. 在 App.tsx 中使用 PreloadDataProvider 包裹应用
- * 2. 预加载在后台静默进行，不阻塞 UI
- * 3. AutocompleteInput 会自动使用预加载的缓存数据
+ * - 在 App.tsx 中 AuthProvider 内部使用 PreloadDataProvider
+ * - 必须放在 AuthProvider 内部才能使用 useAuth
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
@@ -32,7 +33,7 @@ import {
   injectUnitsCache,
   injectCategoriesCache,
 } from '../services/supabaseService';
-import { getCurrentUser } from '../services/authService';
+import { useAuth } from './AuthContext';
 import type { Supplier, Product, Category } from '../services/supabaseService';
 
 interface UnitOption {
@@ -62,6 +63,9 @@ interface PreloadDataContextValue {
 const PreloadDataContext = createContext<PreloadDataContextValue | undefined>(undefined);
 
 export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // v2.0: 从 AuthContext 获取用户信息
+  const { user, isAuthenticated } = useAuth();
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
@@ -71,39 +75,54 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 使用 ref 防止重复加载（解决无限循环问题）
-  const hasStartedLoading = useRef(false);
+  // 记录上次加载的 brandId，防止重复加载相同品牌的数据
+  const lastLoadedBrandId = useRef<number | null | undefined>(undefined);
 
-  // 加载所有数据（后台静默执行）
-  const loadData = useCallback(async (force = false) => {
-    // 避免重复加载（除非强制刷新）
-    if (!force && hasStartedLoading.current) return;
-    hasStartedLoading.current = true;
+  // 清空所有预加载数据（用户登出时调用）
+  const clearData = useCallback(() => {
+    setSuppliers([]);
+    setProducts([]);
+    setUnits([]);
+    setCategories([]);
+    setIsLoaded(false);
+    lastLoadedBrandId.current = undefined;
 
-    // v1.6: 获取当前用户的品牌ID用于过滤物料
-    const currentUser = getCurrentUser();
-    const brandId = currentUser?.brand_id || undefined;
+    // 清空 supabaseService 缓存
+    injectSuppliersCache([]);
+    injectProductsCache([]);
+    injectUnitsCache([]);
+    injectCategoriesCache([]);
 
-    console.log('[PreloadData] 后台静默预加载下拉框数据...', brandId ? `(brand_id: ${brandId})` : '(无品牌过滤)');
+    console.log('[PreloadData] 数据已清空（用户登出）');
+  }, []);
+
+  // 加载品牌相关数据（登录后执行）
+  const loadData = useCallback(async (brandId?: number | null) => {
+    // 避免重复加载相同品牌的数据
+    if (lastLoadedBrandId.current === brandId && isLoaded) {
+      console.log('[PreloadData] 跳过加载：品牌数据已存在', brandId);
+      return;
+    }
+
+    console.log('[PreloadData] 开始加载品牌数据...', brandId ? `(brand_id: ${brandId})` : '(无品牌过滤)');
     setIsLoading(true);
     setError(null);
 
     try {
-      // v1.5: 先加载品牌数据（供应商过滤依赖 brandCodeToId 映射）
+      // 先加载品牌数据
       const brandsData = await getBrands().catch(err => {
         console.error('[PreloadData] 加载品牌失败:', err);
         return [];
       });
       injectBrandsCache(brandsData);
 
-      // 并行加载其他数据
-      // v1.6: 分类、产品、供应商都传入 brand_id 进行过滤
+      // 并行加载该品牌的所有数据
       const [suppliersData, productsData, unitsData, categoriesData] = await Promise.all([
-        getSuppliers(brandId).catch(err => {
+        getSuppliers(brandId ?? undefined).catch(err => {
           console.error('[PreloadData] 加载供应商失败:', err);
           return [];
         }),
-        getProducts(undefined, brandId).catch(err => {
+        getProducts(undefined, brandId ?? undefined).catch(err => {
           console.error('[PreloadData] 加载产品失败:', err);
           return [];
         }),
@@ -111,7 +130,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           console.error('[PreloadData] 加载单位失败:', err);
           return [];
         }),
-        getCategories(brandId).catch(err => {
+        getCategories(brandId ?? undefined).catch(err => {
           console.error('[PreloadData] 加载分类失败:', err);
           return [];
         }),
@@ -122,8 +141,9 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setUnits(unitsData);
       setCategories(categoriesData);
       setIsLoaded(true);
+      lastLoadedBrandId.current = brandId;
 
-      // 注入到 supabaseService 缓存中，供 AutocompleteInput 使用
+      // 注入到 supabaseService 缓存中
       injectSuppliersCache(suppliersData);
       injectProductsCache(productsData);
       injectUnitsCache(unitsData);
@@ -135,7 +155,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         products: productsData.length,
         units: unitsData.length,
         categories: categoriesData.length,
-        brandId: brandId || '全部',
+        brandId: brandId ?? '全部',
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载数据失败';
@@ -144,19 +164,37 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } finally {
       setIsLoading(false);
     }
-  }, []); // 无依赖，函数稳定不变
+  }, [isLoaded]);
 
-  // 刷新数据（强制重新加载）
+  // 刷新数据（强制重新加载当前品牌）
   const refresh = useCallback(async () => {
     setIsLoaded(false);
-    hasStartedLoading.current = false;
-    await loadData(true);
-  }, [loadData]);
+    lastLoadedBrandId.current = undefined;
+    if (isAuthenticated && user) {
+      await loadData(user.brand_id);
+    }
+  }, [isAuthenticated, user, loadData]);
 
-  // 组件挂载时后台加载（只执行一次）
+  // v2.0: 监听用户登录状态变化
+  // - 用户登录后 → 加载该品牌的数据
+  // - 用户登出后 → 清空所有数据
   useEffect(() => {
-    loadData();
-  }, []); // 空依赖，只在挂载时执行一次
+    if (isAuthenticated && user) {
+      // 用户已登录，加载该品牌的数据
+      console.log('[PreloadData] 用户已登录，准备加载数据:', {
+        userId: user.id,
+        userName: user.name,
+        storeId: user.store_id,
+        brandId: user.brand_id,
+      });
+      loadData(user.brand_id);
+    } else {
+      // 用户已登出，清空数据
+      if (lastLoadedBrandId.current !== undefined) {
+        clearData();
+      }
+    }
+  }, [isAuthenticated, user?.id, user?.brand_id]); // 只在认证状态或品牌变化时触发
 
   const value: PreloadDataContextValue = {
     suppliers,

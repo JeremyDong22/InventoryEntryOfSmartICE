@@ -990,4 +990,20 @@
   .animate-delay-300 {
     animation-delay: 300ms;
   }
+
+  /* ===== 版本更新横幅动画 ===== */
+  .animate-slide-down {
+    animation: slide-down 0.3s ease-out;
+  }
+
+  @keyframes slide-down {
+    from {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
 }
