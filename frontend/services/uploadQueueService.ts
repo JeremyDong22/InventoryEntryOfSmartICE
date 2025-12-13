@@ -1,10 +1,10 @@
 /**
  * 上传队列服务
- * v1.2 - 添加 brandCode 支持，新建供应商时绑定品牌
+ * v1.3 - 使用 brand_id 外键替代 brandCode 字符串
  * v1.1 - 添加 AI 使用统计支持（use_ai_photo, use_ai_voice）
  *
  * 变更历史：
- * - v1.2: addToQueue/addToUploadQueue 支持传入 brandCode
+ * - v1.3: addToQueue/addToUploadQueue 支持传入 brandId (数字外键)
  * - v1.1: addToQueue/addToUploadQueue 支持传入 aiUsage 统计
  * - v1.0: 初始版本：实现本地队列管理、后台上传、失败重试
  *
@@ -33,7 +33,7 @@ export interface QueueItem {
   storeId: string;                     // 门店ID
   employeeId: string;                  // 员工ID
   aiUsage?: AiUsageStats;              // v1.1: AI 使用统计
-  brandCode?: string | null;           // v1.2: 品牌代码，用于新建供应商
+  brandId?: number | null;             // v1.3: 品牌ID外键，用于新建供应商
   error?: string;                      // 失败原因
   result?: SubmitResult;               // 提交结果
 }
@@ -64,7 +64,7 @@ class UploadQueueManager {
 
   /**
    * 添加新项到队列
-   * v1.2 - 支持传入 brandCode
+   * v1.3 - 支持传入 brandId (数字外键)
    * v1.1 - 支持传入 AI 使用统计
    */
   addToQueue(
@@ -72,7 +72,7 @@ class UploadQueueManager {
     storeId: string,
     employeeId: string,
     aiUsage?: AiUsageStats,
-    brandCode?: string | null
+    brandId?: number | null
   ): string {
     const id = this.generateId();
     const now = Date.now();
@@ -87,7 +87,7 @@ class UploadQueueManager {
       storeId,
       employeeId,
       aiUsage,
-      brandCode,
+      brandId,
     };
 
     this.queue.push(item);
@@ -261,14 +261,14 @@ class UploadQueueManager {
     try {
       console.log(`[队列] 上传中: ${item.id} (重试次数: ${item.retryCount})`);
 
-      // v1.2: 调用提交服务，传入 AI 使用统计和品牌代码
+      // v1.3: 调用提交服务，传入 AI 使用统计和品牌ID
       const result = await submitProcurement(
         item.data,
         item.storeId,
         item.employeeId,
         undefined,        // onProgress 回调不需要
         item.aiUsage,     // AI 使用统计
-        item.brandCode    // 品牌代码
+        item.brandId      // 品牌ID外键
       );
 
       if (result.success) {
@@ -391,7 +391,7 @@ export const uploadQueueService = new UploadQueueManager();
 
 /**
  * 添加到上传队列
- * v1.2 - 支持传入 brandCode
+ * v1.3 - 支持传入 brandId (数字外键)
  * v1.1 - 支持传入 AI 使用统计
  */
 export function addToUploadQueue(
@@ -399,9 +399,9 @@ export function addToUploadQueue(
   storeId: string,
   employeeId: string,
   aiUsage?: AiUsageStats,
-  brandCode?: string | null
+  brandId?: number | null
 ): string {
-  return uploadQueueService.addToQueue(data, storeId, employeeId, aiUsage, brandCode);
+  return uploadQueueService.addToQueue(data, storeId, employeeId, aiUsage, brandId);
 }
 
 /**

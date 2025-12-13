@@ -1,5 +1,5 @@
 // EntryForm - 采购录入表单
-// v5.1 - 新建供应商时传递 brand_code，绑定当前品牌
+// v5.2 - 使用 brand_id 外键替代 brand_code 字符串
 // v5.0 - 员工餐分类特殊处理：固定物料/单位，禁用AI识别/语音，只允许单条
 // v4.8 - 收货单照片添加"需为同一供货商"提示 + 供应商/备注增加一键清除按钮
 // v4.7 - 货物照片支持批量添加多张（称重核对留证）
@@ -1718,10 +1718,10 @@ ${productList}
     console.log(`[提交] AI 使用统计: 识图=${useAiPhotoCount}次, 语音=${useAiVoiceCount}次`);
 
     // 添加到队列
-    // v5.1: 传递 brand_code 用于新建供应商时绑定品牌
+    // v5.2: 传递 brand_id 用于新建供应商时绑定品牌
     if (storeId && employeeId) {
-      const queueId = addToUploadQueue(logData, storeId, employeeId, aiUsage, user?.brand_code);
-      console.log(`[队列] 任务已加入队列: ${queueId}, brand_code: ${user?.brand_code}`);
+      const queueId = addToUploadQueue(logData, storeId, employeeId, aiUsage, user?.brand_id);
+      console.log(`[队列] 任务已加入队列: ${queueId}, brand_id: ${user?.brand_id}`);
 
       // 显示成功提示
       setSubmitProgress('success');

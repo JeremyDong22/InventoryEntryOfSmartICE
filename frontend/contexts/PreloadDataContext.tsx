@@ -1,6 +1,7 @@
 /**
  * PreloadDataContext - 数据预加载上下文
- * v1.5 - 品牌从数据库动态加载，先加载品牌再加载其他数据（供应商过滤依赖品牌映射）
+ * v1.6 - 使用 brand_id 外键过滤，移除 code→id 映射依赖
+ * v1.5 - 品牌从数据库动态加载
  * v1.4 - 添加分类预加载，从数据库读取分类数据
  *
  * 功能：
@@ -8,10 +9,9 @@
  * - 不阻塞页面渲染，用户可立即使用
  * - 使用 ref 防止重复加载
  * - 与 supabaseService.ts 共享缓存机制
- * - v1.5: 先加载品牌数据，构建 code→id 映射，供应商过滤依赖此映射
+ * - v1.6: 直接使用 user.brand_id 过滤，无需 code→id 映射
+ * - v1.5: 先加载品牌数据
  * - v1.4: 新增分类预加载，支持品牌过滤
- * - v1.3: 供应商也根据用户 brand_code 过滤
- * - v1.2: 根据用户 brand_code 加载对应品牌的物料
  *
  * 使用方式：
  * 1. 在 App.tsx 中使用 PreloadDataProvider 包裹应用
@@ -80,11 +80,11 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (!force && hasStartedLoading.current) return;
     hasStartedLoading.current = true;
 
-    // v1.2: 获取当前用户的品牌代码用于过滤物料
+    // v1.6: 获取当前用户的品牌ID用于过滤物料
     const currentUser = getCurrentUser();
-    const brandCode = currentUser?.brand_code || undefined;
+    const brandId = currentUser?.brand_id || undefined;
 
-    console.log('[PreloadData] 后台静默预加载下拉框数据...', brandCode ? `(品牌: ${brandCode})` : '(无品牌过滤)');
+    console.log('[PreloadData] 后台静默预加载下拉框数据...', brandId ? `(brand_id: ${brandId})` : '(无品牌过滤)');
     setIsLoading(true);
     setError(null);
 
@@ -97,13 +97,13 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       injectBrandsCache(brandsData);
 
       // 并行加载其他数据
-      // v1.4: 分类、产品、供应商都传入品牌代码进行过滤
+      // v1.6: 分类、产品、供应商都传入 brand_id 进行过滤
       const [suppliersData, productsData, unitsData, categoriesData] = await Promise.all([
-        getSuppliers(brandCode).catch(err => {
+        getSuppliers(brandId).catch(err => {
           console.error('[PreloadData] 加载供应商失败:', err);
           return [];
         }),
-        getProducts(undefined, brandCode).catch(err => {
+        getProducts(undefined, brandId).catch(err => {
           console.error('[PreloadData] 加载产品失败:', err);
           return [];
         }),
@@ -111,7 +111,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           console.error('[PreloadData] 加载单位失败:', err);
           return [];
         }),
-        getCategories(brandCode).catch(err => {
+        getCategories(brandId).catch(err => {
           console.error('[PreloadData] 加载分类失败:', err);
           return [];
         }),
@@ -135,7 +135,7 @@ export const PreloadDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         products: productsData.length,
         units: unitsData.length,
         categories: categoriesData.length,
-        brandCode: brandCode || '全部',
+        brandId: brandId || '全部',
       });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '加载数据失败';
