@@ -15,7 +15,7 @@
  */
 
 import { supabase } from './supabaseClient';
-import { searchInList } from './pinyinSearch';
+import { searchInList, matchesQuery } from './pinyinSearch';
 
 // 导出 supabase 客户端以保持向后兼容
 export function getSupabaseClient() {
@@ -601,6 +601,7 @@ export async function searchSuppliers(query: string): Promise<AutocompleteOption
 
 /**
  * 搜索产品（支持汉字 + 拼音首字母 + 别名匹配）
+ * v3.9 - 别名匹配时显示格式：产品名（匹配的别名）
  * v3.8 - 支持别名搜索：搜索关键词会同时匹配 name 和 aliases 数组
  * v2.2 - 更新为使用 id/name 字段
  * @param query 搜索关键词
@@ -614,27 +615,46 @@ export async function searchProducts(query: string): Promise<AutocompleteOption[
     productsCache = await getProducts();
   }
 
-  // v3.8: 扩展搜索函数，同时匹配 name 和 aliases
-  const getSearchableText = (p: Product): string => {
-    // 将 name 和所有别名合并为一个可搜索字符串
-    const aliasText = p.aliases ? p.aliases.join(' ') : '';
-    return `${p.name} ${aliasText}`;
-  };
+  // v3.9: 自定义匹配逻辑，记录匹配的别名
+  const results: AutocompleteOption[] = [];
+  const normalizedQuery = query.toLowerCase().trim();
 
-  // 本地搜索（汉字 + 拼音匹配 + 别名匹配）
-  const matched = searchInList(
-    productsCache,
-    query,
-    getSearchableText,
-    10
-  );
+  for (const p of productsCache) {
+    if (results.length >= 10) break;
 
-  return matched.map(p => ({
-    id: p.id,
-    label: p.name,
-    value: p.name,
-    sublabel: p.code || undefined,
-  }));
+    // 1. 先检查 name 是否匹配
+    if (matchesQuery(p.name, normalizedQuery)) {
+      results.push({
+        id: p.id,
+        label: p.name,
+        value: p.name,
+        sublabel: p.code || undefined,
+      });
+      continue;
+    }
+
+    // 2. 如果 name 不匹配，检查 aliases
+    if (p.aliases && p.aliases.length > 0) {
+      let matchedAlias: string | null = null;
+      for (const alias of p.aliases) {
+        if (matchesQuery(alias, normalizedQuery)) {
+          matchedAlias = alias;
+          break;
+        }
+      }
+      if (matchedAlias) {
+        // 别名匹配时，显示为 "产品名（别名）"
+        results.push({
+          id: p.id,
+          label: `${p.name}（${matchedAlias}）`,
+          value: p.name,  // value 仍然是产品原名，选中后填入的是原名
+          sublabel: p.code || undefined,
+        });
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
