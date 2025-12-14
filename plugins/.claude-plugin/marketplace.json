@@ -1,0 +1,15 @@
+{
+  "name": "smartice-plugins",
+  "description": "SmartICE 内部插件集合",
+  "owner": {
+    "name": "SmartICE",
+    "email": "dev@smartice.ai"
+  },
+  "plugins": [
+    {
+      "name": "smartice-inventory",
+      "source": "./smartice-inventory",
+      "description": "库存数据管理 - 操作所有 ims_* 表"
+    }
+  ]
+}

@@ -10,7 +10,7 @@
         "wdpeoyugsxqnpwwtkqsl"
       ],
       "env": {
-        "SUPABASE_ACCESS_TOKEN": "sbp_4c35a53dc5a59b88fe28afcef7c8030e95b26adc"
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
       }
     }
   }
