@@ -1,10 +1,22 @@
 // 收货单图片识别服务
+// v2.1 - JSON 解析失败时抛出带 AI 响应的错误，让用户看到智能提示
 // v2.0 - 统一使用 husanai OpenAI 兼容 API + gemini-2.5-flash-image 模型
 // v1.1 - 将 Gemini API Key 改为环境变量
 // v1.0 - 使用 Gemini 2.0 Flash 识别收货单/送货单图片，提取结构化采购数据
 // 返回与语音录入相同的 VoiceEntryResult 格式，复用表单填充逻辑
 
 import { ProcurementItem } from '../types';
+
+// 自定义错误：AI 无法提取结构化数据时，携带 AI 的原始回复
+export class RecognitionParseError extends Error {
+  public readonly aiResponse: string;
+
+  constructor(aiResponse: string) {
+    super('AI 无法从图片中提取采购信息');
+    this.name = 'RecognitionParseError';
+    this.aiResponse = aiResponse;
+  }
+}
 
 // Husanai OpenAI 兼容 API 配置
 const HUSANAI_API_KEY = import.meta.env.VITE_HUSANAI_API_KEY || '';
@@ -140,8 +152,9 @@ export async function recognizeReceipt(
     // 解析 JSON
     const result = parseJsonResponse(generatedText);
     if (!result) {
-      console.error('[收货单识别] JSON 解析失败');
-      return null;
+      console.error('[收货单识别] JSON 解析失败，AI 回复:', generatedText);
+      // v2.1: 抛出带 AI 响应的错误，让调用方可以展示给用户
+      throw new RecognitionParseError(generatedText);
     }
 
     // 验证和修正数据

@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v5.4 - AI 识别失败时展示智能提示（如"这不是收货单"），提升用户体验
 // v5.3 - 供应商选择启用严格模式，防止用户绕过"其他"选项直接输入新供应商
 // v5.2 - 使用 brand_id 外键替代 brand_code 字符串
 // v5.0 - 员工餐分类特殊处理：固定物料/单位，禁用AI识别/语音，只允许单条
@@ -32,7 +33,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types';
 import { usePreloadData } from '../contexts/PreloadDataContext';
-import { recognizeReceipt } from '../services/receiptRecognitionService';
+import { recognizeReceipt, RecognitionParseError } from '../services/receiptRecognitionService';
 import { compressImage, generateThumbnail, formatFileSize } from '../services/imageService';
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
 import { SubmitProgress } from '../services/inventoryService';
@@ -1265,9 +1266,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // 获取认证信息
+  // v2.0: 使用 restaurant_id 替代 store_id
   // v1.9: 从 user 对象中正确提取 storeId 和 employeeId
   const { user } = useAuth();
-  const storeId = user?.store_id || null;
+  const storeId = user?.restaurant_id || null;
   const employeeId = user?.id || null;
 
   // v3.9: 页面加载时预检麦克风权限（非阻塞）
@@ -1469,30 +1471,40 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
         const img = unrecognizedImages[i];
         console.log(`[AI识别] 识别第 ${i + 1}/${unrecognizedImages.length} 张...`);
 
-        const result = await recognizeReceipt(img.data, img.mimeType);
-        if (result) {
-          console.log(`[AI识别] 第 ${i + 1} 张识别成功:`, result);
-          successCount++;
-          // v4.6: 增加 AI 识图使用次数
-          setUseAiPhotoCount(prev => prev + 1);
-          // 使用与语音录入相同的表单填充逻辑（追加模式）
-          fillFormWithResult(result);
-          // 标记该图片已识别
-          setReceiptImages(prev =>
-            prev.map(item => item.id === img.id ? { ...item, recognized: true } : item)
-          );
-        } else {
-          console.warn(`[AI识别] 第 ${i + 1} 张识别失败`);
+        try {
+          const result = await recognizeReceipt(img.data, img.mimeType);
+          if (result) {
+            console.log(`[AI识别] 第 ${i + 1} 张识别成功:`, result);
+            successCount++;
+            // v4.6: 增加 AI 识图使用次数
+            setUseAiPhotoCount(prev => prev + 1);
+            // 使用与语音录入相同的表单填充逻辑（追加模式）
+            fillFormWithResult(result);
+            // 标记该图片已识别
+            setReceiptImages(prev =>
+              prev.map(item => item.id === img.id ? { ...item, recognized: true } : item)
+            );
+          }
+        } catch (imgError) {
+          // v5.x: 如果 AI 无法提取结构化数据，展示 AI 的智能回复
+          if (imgError instanceof RecognitionParseError) {
+            console.warn(`[AI识别] 第 ${i + 1} 张无法提取数据:`, imgError.aiResponse);
+            alert(`🤖 AI 识别结果：\n\n${imgError.aiResponse}`);
+          } else {
+            console.error(`[AI识别] 第 ${i + 1} 张出错:`, imgError);
+            const errorMessage = imgError instanceof Error ? imgError.message : '未知错误';
+            alert(`第 ${i + 1} 张识别出错: ${errorMessage}`);
+          }
         }
       }
 
       // 检查是否有失败的（使用本地计数避免 React 状态异步问题）
       const failCount = unrecognizedImages.length - successCount;
-      if (failCount > 0) {
-        alert(`${successCount} 张识别成功，${failCount} 张失败`);
+      if (failCount > 0 && successCount > 0) {
+        alert(`${successCount} 张识别成功，${failCount} 张未能提取数据`);
       }
     } catch (recognitionError) {
-      console.error('[AI识别] 识别出错:', recognitionError);
+      console.error('[AI识别] 识别流程出错:', recognitionError);
       const errorMessage = recognitionError instanceof Error ? recognitionError.message : '未知错误';
       alert(`收货单识别出错: ${errorMessage}`);
     }
