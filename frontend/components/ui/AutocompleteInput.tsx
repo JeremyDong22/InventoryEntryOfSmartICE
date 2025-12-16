@@ -1,8 +1,10 @@
 /**
  * 自动完成输入框组件
- * v3.3 - 新增 strictSelection 严格选择模式，强制用户只能从列表选择
+ * v3.5 - 触摸下拉框时自动收起键盘，避免键盘遮挡选项
  *
  * 变更历史：
+ * - v3.5: 触摸下拉框时自动收起软键盘，改善移动端选择体验
+ * - v3.4: 修复移动端下拉框滚动穿透问题，添加 touch-action 和 overscroll-behavior
  * - v3.3: 新增 strictSelection 属性，启用时用户只能从下拉列表选择值
  * - v3.2: inline 变体输入框容器添加边框样式（bg-cacao-husk/60 + 棕色边框）
  * - v3.1: 使用 createPortal 将下拉框渲染到 body，避免被 GlassCard 遮挡
@@ -95,6 +97,8 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
   const [lastValidValue, setLastValidValue] = useState(value);
   // v3.3: 追踪是否通过选择方式设置了值
   const isValueFromSelection = useRef(false);
+  // v3.5: 追踪用户是否正在与下拉框交互（触摸滑动中）
+  const isInteractingWithDropdown = useRef(false);
 
   // Refs
   const containerRef = useRef<HTMLDivElement>(null);
@@ -131,6 +135,59 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
       };
     }
   }, [isOpen, updateDropdownPosition]);
+
+  // v3.4: 下拉框内部滚动时阻止事件穿透到页面
+  const handleDropdownTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const dropdown = dropdownRef.current;
+    if (!dropdown) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = dropdown;
+    const isAtTop = scrollTop <= 0;
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight;
+
+    // 只在滚动到边界时阻止默认行为，防止穿透到页面
+    // 检查滚动方向
+    const touch = e.touches[0];
+    const startY = (dropdown as any)._touchStartY || touch.clientY;
+    const deltaY = touch.clientY - startY;
+
+    // 向下滑动（手指向下移动，内容向上滚动）且已在顶部
+    if (deltaY > 0 && isAtTop) {
+      e.preventDefault();
+      return;
+    }
+    // 向上滑动（手指向上移动，内容向下滚动）且已在底部
+    if (deltaY < 0 && isAtBottom) {
+      e.preventDefault();
+      return;
+    }
+    // 阻止事件冒泡，防止触发页面滚动
+    e.stopPropagation();
+  }, []);
+
+  // v3.4: 记录触摸起始位置
+  // v3.5: 触摸下拉框时收起键盘，避免键盘遮挡选项
+  const handleDropdownTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const dropdown = dropdownRef.current;
+    if (dropdown) {
+      (dropdown as any)._touchStartY = e.touches[0].clientY;
+    }
+    // v3.5: 标记正在与下拉框交互，防止 blur 触发 strictSelection 恢复
+    isInteractingWithDropdown.current = true;
+    // v3.5: 收起软键盘，让下拉框有更多显示空间
+    // 使用 blur 让输入框失去焦点，从而收起键盘
+    if (inputRef.current && document.activeElement === inputRef.current) {
+      inputRef.current.blur();
+    }
+  }, []);
+
+  // v3.5: 触摸结束时重置交互标记
+  const handleDropdownTouchEnd = useCallback(() => {
+    // 延迟重置，确保 click 事件先处理
+    setTimeout(() => {
+      isInteractingWithDropdown.current = false;
+    }, 200);
+  }, []);
 
   // 防抖搜索
   const handleInputChange = useCallback(
@@ -279,8 +336,13 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
 
   // v3.3: 失去焦点时，如果是严格模式且值不是通过选择获得的，恢复到最后有效值
   // 使用延迟执行避免与点击下拉选项的竞态条件
+  // v3.5: 如果正在与下拉框交互，不触发恢复逻辑
   const handleBlur = useCallback(() => {
     setTimeout(() => {
+      // v3.5: 如果正在与下拉框交互（触摸滑动中），跳过恢复检查
+      if (isInteractingWithDropdown.current) {
+        return;
+      }
       if (strictSelection && !isValueFromSelection.current) {
         // 如果当前值不等于最后有效值，则恢复
         if (value !== lastValidValue) {
@@ -426,13 +488,17 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
       </div>
 
       {/* v3.1: 下拉列表 - 使用 Portal 渲染到 body，避免层叠上下文问题 */}
+      {/* v3.4: 添加 overscroll-contain 和 touch 事件处理防止移动端滚动穿透 */}
       {isOpen &&
         createPortal(
           <div
             ref={dropdownRef}
+            onTouchStart={handleDropdownTouchStart}
+            onTouchMove={handleDropdownTouchMove}
+            onTouchEnd={handleDropdownTouchEnd}
             className={clsx(
               'fixed z-[9999]',
-              'max-h-60 overflow-y-auto',
+              'max-h-60 overflow-y-auto overscroll-contain',
               'py-2',
               'rounded-[28px]',
               'border border-white/12'
@@ -447,6 +513,9 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
               WebkitBackdropFilter: 'blur(48px) saturate(180%)',
               boxShadow:
                 '0 8px 40px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3)',
+              // v3.4: 防止移动端滚动穿透
+              touchAction: 'pan-y',
+              WebkitOverflowScrolling: 'touch',
             }}
           >
             {options.length === 0 ? (
