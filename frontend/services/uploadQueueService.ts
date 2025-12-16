@@ -1,9 +1,11 @@
 /**
  * 上传队列服务
+ * v1.4 - 添加 localStorage 写入失败检测，返回 null 时表示保存失败
  * v1.3 - 使用 brand_id 外键替代 brandCode 字符串
  * v1.1 - 添加 AI 使用统计支持（use_ai_photo, use_ai_voice）
  *
  * 变更历史：
+ * - v1.4: saveQueue 返回 boolean，addToQueue 保存失败时返回 null
  * - v1.3: addToQueue/addToUploadQueue 支持传入 brandId (数字外键)
  * - v1.1: addToQueue/addToUploadQueue 支持传入 aiUsage 统计
  * - v1.0: 初始版本：实现本地队列管理、后台上传、失败重试
@@ -64,6 +66,7 @@ class UploadQueueManager {
 
   /**
    * 添加新项到队列
+   * v1.4 - 保存失败时返回 null，便于调用方检测
    * v1.3 - 支持传入 brandId (数字外键)
    * v1.1 - 支持传入 AI 使用统计
    */
@@ -73,7 +76,7 @@ class UploadQueueManager {
     employeeId: string,
     aiUsage?: AiUsageStats,
     brandId?: number | null
-  ): string {
+  ): string | null {
     const id = this.generateId();
     const now = Date.now();
 
@@ -91,7 +94,16 @@ class UploadQueueManager {
     };
 
     this.queue.push(item);
-    this.saveQueue();
+
+    // v1.4: 检查保存是否成功
+    const saved = this.saveQueue();
+    if (!saved) {
+      // 保存失败，从队列中移除刚添加的项
+      this.queue.pop();
+      console.error(`[队列] 保存失败，任务未添加: ${id}`);
+      return null;
+    }
+
     this.notifyListeners();
 
     console.log(`[队列] 新增任务: ${id}`);
@@ -330,12 +342,15 @@ class UploadQueueManager {
 
   /**
    * 保存队列到 localStorage
+   * v1.4 - 返回 boolean 表示是否成功
    */
-  private saveQueue() {
+  private saveQueue(): boolean {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.queue));
+      return true;
     } catch (error) {
       console.error('[队列] 保存队列失败:', error);
+      return false;
     }
   }
 
@@ -391,6 +406,7 @@ export const uploadQueueService = new UploadQueueManager();
 
 /**
  * 添加到上传队列
+ * v1.4 - 返回 null 表示保存失败
  * v1.3 - 支持传入 brandId (数字外键)
  * v1.1 - 支持传入 AI 使用统计
  */
@@ -400,7 +416,7 @@ export function addToUploadQueue(
   employeeId: string,
   aiUsage?: AiUsageStats,
   brandId?: number | null
-): string {
+): string | null {
   return uploadQueueService.addToQueue(data, storeId, employeeId, aiUsage, brandId);
 }
 

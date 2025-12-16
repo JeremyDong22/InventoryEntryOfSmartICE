@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v5.7 - 网络错误处理优化：区分验证阶段的网络错误和产品未找到，队列写入失败时提示用户
 // v5.6 - 修复上传倒计时结束后闪回空表单(总价=0)的问题：先跳转再重置表单状态
 // v5.5 - "其他"供应商名称保护：禁止输入保留字（其他/员工餐）或已存在的供应商名
 // v5.4 - AI 识别失败时展示智能提示（如"这不是收货单"），提升用户体验
@@ -1692,7 +1693,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     }
 
     // 7. v4.1: 验证物品名称是否精确存在于数据库（避免"1"匹配到"红油"的问题）
+    // v5.7: 区分网络错误和产品未找到，给出不同提示
     const unmatchedProducts: string[] = [];
+    let hasNetworkError = false;
+
     for (const item of validItems) {
         // 如果已有 productId（从下拉选择），则跳过验证
         if (item.productId) {
@@ -1708,9 +1712,16 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
             }
         } catch (error) {
             console.error(`[验证] 产品精确匹配失败: ${item.name}`, error);
-            // 网络错误时也算作未匹配（安全起见）
-            unmatchedProducts.push(item.name);
+            // v5.7: 区分网络错误，不再错误归类为产品未找到
+            hasNetworkError = true;
+            break; // 网络错误时立即中断，提示用户检查网络
         }
+    }
+
+    // v5.7: 优先处理网络错误
+    if (hasNetworkError) {
+        alert('网络连接异常，请检查网络后重试。\n\n如果网络正常，请稍后再试。');
+        return;
     }
 
     // 如果有未匹配的产品，显示错误提示并阻止提交
@@ -1763,44 +1774,54 @@ ${productList}
 
     // 添加到队列
     // v5.2: 传递 brand_id 用于新建供应商时绑定品牌
+    // v5.7: 添加 try-catch 处理队列写入失败
     if (storeId && employeeId) {
-      const queueId = addToUploadQueue(logData, storeId, employeeId, aiUsage, user?.brand_id);
-      console.log(`[队列] 任务已加入队列: ${queueId}, brand_id: ${user?.brand_id}`);
+      try {
+        const queueId = addToUploadQueue(logData, storeId, employeeId, aiUsage, user?.brand_id);
+        if (!queueId) {
+          throw new Error('队列写入失败');
+        }
+        console.log(`[队列] 任务已加入队列: ${queueId}, brand_id: ${user?.brand_id}`);
 
-      // 显示成功提示
-      setSubmitProgress('success');
-      setSubmitMessage('已提交，可在上传记录中查看状态');
-      setCountdown(2);
+        // 显示成功提示
+        setSubmitProgress('success');
+        setSubmitMessage('已提交，可在上传记录中查看状态');
+        setCountdown(2);
 
-      // 2 秒后返回
-      countdownIntervalRef.current = setInterval(() => {
-        setCountdown(prev => {
-          if (prev <= 1) {
-            if (countdownIntervalRef.current) {
-              clearInterval(countdownIntervalRef.current);
-              countdownIntervalRef.current = null;
+        // 2 秒后返回
+        countdownIntervalRef.current = setInterval(() => {
+          setCountdown(prev => {
+            if (prev <= 1) {
+              if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+                countdownIntervalRef.current = null;
+              }
+              // v4.9: 先跳转再重置，避免闪回空表单（总价为0）
+              // 跳转回首页
+              onSave(logData);
+              // 延迟重置表单状态，确保跳转后再重置
+              setTimeout(() => {
+                setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
+                setSupplier('');
+                setSupplierOther('');
+                setNotes('');
+                setReceiptImages([]);
+                setGoodsImages([]);
+                setSubmitMessage('');
+                setSubmitProgress(null);
+                setUseAiPhotoCount(0);
+                setUseAiVoiceCount(0);
+              }, 100);
+              return 0;
             }
-            // v4.9: 先跳转再重置，避免闪回空表单（总价为0）
-            // 跳转回首页
-            onSave(logData);
-            // 延迟重置表单状态，确保跳转后再重置
-            setTimeout(() => {
-              setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
-              setSupplier('');
-              setSupplierOther('');
-              setNotes('');
-              setReceiptImages([]);
-              setGoodsImages([]);
-              setSubmitMessage('');
-              setSubmitProgress(null);
-              setUseAiPhotoCount(0);
-              setUseAiVoiceCount(0);
-            }, 100);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+            return prev - 1;
+          });
+        }, 1000);
+      } catch (error) {
+        // v5.7: 队列写入失败时提示用户
+        console.error('[队列] 写入失败:', error);
+        alert('数据保存失败，可能是存储空间不足。\n\n请清理浏览器缓存后重试，或联系管理员。');
+      }
     } else {
       alert('未登录，请先登录');
     }
