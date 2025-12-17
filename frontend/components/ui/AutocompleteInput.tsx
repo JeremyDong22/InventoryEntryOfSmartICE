@@ -1,8 +1,9 @@
 /**
  * 自动完成输入框组件
- * v3.6 - 修复移动端下拉框选择问题，下拉框始终固定在输入框下方
+ * v3.7 - 修复键盘弹出时下拉框被误关闭的问题
  *
  * 变更历史：
+ * - v3.7: 修复键盘弹出导致的滚动事件误关闭下拉框；移除过于激进的滚动监听
  * - v3.6: 移除触摸时自动收起键盘，改用 pointerdown 阻止 blur；
  *         下拉框位置实时跟踪输入框；页面滚动时自动关闭下拉框
  * - v3.5: 触摸下拉框时自动收起软键盘，改善移动端选择体验
@@ -155,41 +156,8 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     };
   }, [isOpen]);
 
-  // v3.6: 页面外部滚动时关闭下拉框并收起键盘
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // 追踪是否正在下拉框内触摸
-    let isTouchingDropdown = false;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      // 检查触摸是否发生在下拉框内
-      isTouchingDropdown = dropdownRef.current?.contains(e.target as Node) ?? false;
-    };
-
-    const handlePageScroll = (e: Event) => {
-      // 如果是下拉框内部的滚动，不处理
-      if (isTouchingDropdown || dropdownRef.current?.contains(e.target as Node)) {
-        return;
-      }
-      // 滚动发生在外部，关闭下拉框
-      setIsOpen(false);
-      // 收起键盘
-      if (inputRef.current && document.activeElement === inputRef.current) {
-        inputRef.current.blur();
-      }
-    };
-
-    // 监听触摸开始位置
-    document.addEventListener('touchstart', handleTouchStart, { passive: true });
-    // 使用 capture 阶段监听滚动事件
-    window.addEventListener('scroll', handlePageScroll, true);
-
-    return () => {
-      document.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('scroll', handlePageScroll, true);
-    };
-  }, [isOpen]);
+  // v3.7: 移除滚动监听，因为键盘弹出会触发页面滚动导致下拉框误关闭
+  // 点击外部区域关闭下拉框的逻辑已由 handleClickOutside 处理
 
   // v3.6: 下拉框内部滚动时完全阻止事件穿透到页面
   const handleDropdownTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
