@@ -66,16 +66,9 @@
   --blur-glass-matte: 16px;
   --blur-glass-ultra: 56px;
 
-  /* 阴影系统 - Storm Glass 冷色调 */
-  --shadow-glass:
-    0 4px 24px rgba(0, 0, 0, 0.4),
-    0 1px 3px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --shadow-glass-elevated:
-    0 8px 40px rgba(0, 0, 0, 0.5),
-    0 4px 16px rgba(0, 0, 0, 0.3),
-    0 1px 4px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  /* 阴影系统 - Storm Glass 冷色调 (v4.2: 移除外阴影，只保留内高光) */
+  --shadow-glass: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-glass-elevated: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   --shadow-glass-glow:
     0 0 60px rgba(91, 163, 192, 0.2),
     0 0 100px rgba(91, 163, 192, 0.1);
