@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v5.10 - 草稿支持图片：使用 IndexedDB 存储，fallback 到 localStorage（只存文字）
 // v5.9 - 队列存储改用 IndexedDB：解决 5MB localStorage 限制，支持大量图片无丢失上传
 // v5.8 - 自动存草稿功能：表单数据自动保存到 localStorage，重新打开时可恢复上次录入
 // v5.7 - 网络错误处理优化：区分验证阶段的网络错误和产品未找到，队列写入失败时提示用户
@@ -259,7 +260,7 @@ const DraftRecoveryModal: React.FC<{
         检测到未完成的录入
       </h3>
 
-      {/* 草稿信息 */}
+      {/* 草稿信息 v5.9: 添加图片数量显示 */}
       <p className="text-white/60 text-center text-sm mb-6">
         {draftInfo.category && (
           <span className="text-white/80">{draftInfo.category}</span>
@@ -268,7 +269,11 @@ const DraftRecoveryModal: React.FC<{
         {draftInfo.itemCount > 0 && (
           <span className="text-white/80">{draftInfo.itemCount} 项物品</span>
         )}
-        {(draftInfo.category || draftInfo.itemCount > 0) && <br />}
+        {draftInfo.imageCount > 0 && (draftInfo.category || draftInfo.itemCount > 0) && ' · '}
+        {draftInfo.imageCount > 0 && (
+          <span className="text-white/80">{draftInfo.imageCount} 张图片</span>
+        )}
+        {(draftInfo.category || draftInfo.itemCount > 0 || draftInfo.imageCount > 0) && <br />}
         <span>保存于 {draftInfo.timeAgo}</span>
       </p>
 
@@ -1427,25 +1432,27 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     });
   }, []);
 
-  // v5.8: 自动保存草稿（表单数据变化时触发）
+  // v5.9: 自动保存草稿（表单数据变化时触发，支持图片）
   useEffect(() => {
     // 只在 WORKSHEET 或 SUMMARY 步骤保存草稿
     if (step !== 'WORKSHEET' && step !== 'SUMMARY') {
       return;
     }
 
-    // 检查是否有实质内容
+    // 检查是否有实质内容（包括图片）
     const hasContent = selectedCategory ||
                        supplier ||
                        supplierOther ||
                        notes ||
-                       items.some(item => item.name.trim() !== '');
+                       items.some(item => item.name.trim() !== '') ||
+                       receiptImages.length > 0 ||
+                       goodsImages.length > 0;
 
     if (!hasContent) {
       return;
     }
 
-    // 保存草稿（带防抖）
+    // 保存草稿（带防抖），包含图片数据
     saveDraft({
       step,
       selectedCategory,
@@ -1453,12 +1460,14 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
       supplierOther,
       notes,
       items,
+      receiptImages,  // v5.9: 保存收货单图片
+      goodsImages,    // v5.9: 保存货物图片
     });
-  }, [step, selectedCategory, supplier, supplierOther, notes, items]);
+  }, [step, selectedCategory, supplier, supplierOther, notes, items, receiptImages, goodsImages]);
 
-  // v5.8: 点击"开始录入"时检测草稿
-  const handleStartEntry = () => {
-    const draftInfo = getDraftInfo();
+  // v5.9: 点击"开始录入"时检测草稿（异步）
+  const handleStartEntry = async () => {
+    const draftInfo = await getDraftInfo();
     if (draftInfo) {
       // 有草稿，显示恢复弹窗
       setPendingDraftInfo(draftInfo);
@@ -1469,15 +1478,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     }
   };
 
-  // v5.8: 恢复草稿
-  const handleRestoreDraft = () => {
-    const draft = loadDraft();
+  // v5.9: 恢复草稿（异步，包括图片）
+  const handleRestoreDraft = async () => {
+    const draft = await loadDraft();
     if (draft) {
       setSelectedCategory(draft.selectedCategory || '');
       setSupplier(draft.supplier || '');
       setSupplierOther(draft.supplierOther || '');
       setNotes(draft.notes || '');
       setItems(draft.items.length > 0 ? draft.items : [{ name: '', specification: '', quantity: 0, unit: '', unitPrice: 0, total: 0 }]);
+      // v5.9: 恢复图片
+      setReceiptImages(draft.receiptImages || []);
+      setGoodsImages(draft.goodsImages || []);
       // 根据草稿步骤决定跳转位置
       if (draft.step === 'SUMMARY') {
         setStep('SUMMARY');
@@ -1491,9 +1503,9 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
     setPendingDraftInfo(null);
   };
 
-  // v5.8: 丢弃草稿，重新开始
-  const handleDiscardDraft = () => {
-    clearDraft();
+  // v5.9: 丢弃草稿，重新开始（异步）
+  const handleDiscardDraft = async () => {
+    await clearDraft();
     setShowDraftModal(false);
     setPendingDraftInfo(null);
     setStep('CATEGORY');
@@ -1972,8 +1984,8 @@ ${productList}
         }
         console.log(`[队列] 任务已加入队列: ${queueId}, brand_id: ${user?.brand_id}`);
 
-        // v5.8: 提交成功后清除草稿
-        clearDraft();
+        // v5.9: 提交成功后清除草稿（异步）
+        await clearDraft();
 
         // 显示成功提示
         setSubmitProgress('success');
