@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v6.0 - 修复草稿缓存问题：提交成功后草稿被 useEffect 重新保存导致下次进入提示恢复
 // v5.10 - 草稿支持图片：使用 IndexedDB 存储，fallback 到 localStorage（只存文字）
 // v5.9 - 队列存储改用 IndexedDB：解决 5MB localStorage 限制，支持大量图片无丢失上传
 // v5.8 - 自动存草稿功能：表单数据自动保存到 localStorage，重新打开时可恢复上次录入
@@ -1433,9 +1434,15 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
   }, []);
 
   // v5.9: 自动保存草稿（表单数据变化时触发，支持图片）
+  // v6.0: 修复提交成功后草稿被重新保存的问题
   useEffect(() => {
     // 只在 WORKSHEET 或 SUMMARY 步骤保存草稿
     if (step !== 'WORKSHEET' && step !== 'SUMMARY') {
+      return;
+    }
+
+    // v6.0: 提交成功后不再保存草稿（防止 clearDraft 后又被 useEffect 重新保存）
+    if (submitProgress === 'success') {
       return;
     }
 
@@ -1463,7 +1470,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
       receiptImages,  // v5.9: 保存收货单图片
       goodsImages,    // v5.9: 保存货物图片
     });
-  }, [step, selectedCategory, supplier, supplierOther, notes, items, receiptImages, goodsImages]);
+  }, [step, selectedCategory, supplier, supplierOther, notes, items, receiptImages, goodsImages, submitProgress]);
 
   // v5.9: 点击"开始录入"时检测草稿（异步）
   const handleStartEntry = async () => {
