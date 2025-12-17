@@ -18,7 +18,7 @@
 
 import { DailyLog } from '../types';
 import { submitProcurement, SubmitResult, AiUsageStats } from './inventoryService';
-import { setItem, getItem, isIndexedDBAvailable, migrateFromLocalStorage } from './indexedDBService';
+import { setItem, getItem, isIndexedDBAvailable, migrateFromLocalStorage, getStorageEstimate } from './indexedDBService';
 
 // ============ 类型定义 ============
 
@@ -72,7 +72,15 @@ class UploadQueueManager {
     await this.loadQueue();
     this.startProcessing();
     this.initialized = true;
+
+    // 输出存储空间信息
+    await getStorageEstimate();
     console.log('[队列 v2.0] 初始化完成，使用 IndexedDB 存储');
+    console.log(`[队列] 当前队列项数: ${this.queue.length}`);
+    if (this.queue.length > 0) {
+      const totalSize = JSON.stringify(this.queue).length;
+      console.log(`[队列] 队列数据大小: ${(totalSize / 1024).toFixed(1)}KB`);
+    }
   }
 
   /**

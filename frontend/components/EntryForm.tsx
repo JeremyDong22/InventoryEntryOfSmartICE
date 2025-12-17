@@ -39,7 +39,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types';
 import { usePreloadData } from '../contexts/PreloadDataContext';
 import { recognizeReceipt, RecognitionParseError } from '../services/receiptRecognitionService';
-import { compressImage, generateThumbnail, formatFileSize } from '../services/imageService';
+import { compressImage, generateThumbnail, formatFileSize, compressForUpload } from '../services/imageService';
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
 import { SubmitProgress } from '../services/inventoryService';
 import { addToUploadQueue } from '../services/uploadQueueService';
@@ -1909,12 +1909,37 @@ ${productList}
 
 
   // v4.6: 确认提交直接加入队列（后台上传，用户无需等待）+ AI 使用统计
-  // v5.9: 使用 IndexedDB 存储队列，无需额外压缩图片（容量充足）
+  // v5.9: 使用 IndexedDB 存储队列，仍压缩图片以节省空间
   const handleSummaryConfirm = async () => {
     const validItems = items.filter(i => i.name.trim() !== '');
 
-    // v5.9: IndexedDB 容量充足，直接使用原图（已在拍照时压缩到 1.5MB）
-    // 不再二次压缩到 300KB，保留更好的图片质量
+    // v5.9: 压缩图片到 300KB 以节省 IndexedDB 空间
+    // AI 识别用的是高清原图（1.5MB），存储/上传用压缩版本（300KB）
+    let compressedReceiptImages: AttachedImage[] | undefined;
+    let compressedGoodsImages: AttachedImage[] | undefined;
+
+    if (receiptImages.length > 0) {
+      console.log(`[提交] 压缩 ${receiptImages.length} 张收货单图片 (1.5MB → 300KB)...`);
+      compressedReceiptImages = await Promise.all(
+        receiptImages.map(async (img) => {
+          const compressed = await compressForUpload(img.data, 300);
+          console.log(`[提交] 收货单图片压缩: ${(img.data.length * 0.75 / 1024).toFixed(0)}KB → ${(compressed.length * 0.75 / 1024).toFixed(0)}KB`);
+          return { ...img, data: compressed };
+        })
+      );
+    }
+
+    if (goodsImages.length > 0) {
+      console.log(`[提交] 压缩 ${goodsImages.length} 张货物照片 (1.5MB → 300KB)...`);
+      compressedGoodsImages = await Promise.all(
+        goodsImages.map(async (img) => {
+          const compressed = await compressForUpload(img.data, 300);
+          console.log(`[提交] 货物照片压缩: ${(img.data.length * 0.75 / 1024).toFixed(0)}KB → ${(compressed.length * 0.75 / 1024).toFixed(0)}KB`);
+          return { ...img, data: compressed };
+        })
+      );
+    }
+
     const logData: Omit<DailyLog, 'id'> = {
       date: new Date().toISOString(),
       category: selectedCategory,
@@ -1924,8 +1949,8 @@ ${productList}
       totalCost: calculateGrandTotal(),
       notes: notes,
       status: 'Stocked',
-      receiptImages: receiptImages.length > 0 ? receiptImages : undefined,
-      goodsImages: goodsImages.length > 0 ? goodsImages : undefined,
+      receiptImages: compressedReceiptImages,
+      goodsImages: compressedGoodsImages,
     };
 
     // v4.6: 构建 AI 使用统计

@@ -1,8 +1,10 @@
 /**
  * IndexedDB 存储服务
+ * v1.1 - 添加详细日志 + 存储大小估算
  * v1.0 - 替代 localStorage，解决 5MB 容量限制问题
  *
  * 变更历史：
+ * - v1.1: 添加详细日志便于调试，新增 getStorageEstimate 函数
  * - v1.0: 初始版本，支持队列数据持久化
  *
  * 功能：
@@ -62,6 +64,7 @@ async function getDB(): Promise<IDBDatabase> {
  */
 export async function setItem<T>(key: string, value: T): Promise<void> {
   const db = await getDB();
+  const dataSize = JSON.stringify(value).length;
 
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([STORE_NAME], 'readwrite');
@@ -70,6 +73,7 @@ export async function setItem<T>(key: string, value: T): Promise<void> {
     const request = store.put({ key, value });
 
     request.onsuccess = () => {
+      console.log(`[IndexedDB] 保存成功: ${key}, 大小: ${(dataSize / 1024).toFixed(1)}KB`);
       resolve();
     };
 
@@ -193,4 +197,25 @@ export async function migrateFromLocalStorage<T>(
     console.error('[IndexedDB] 迁移失败:', error);
     return null;
   }
+}
+
+/**
+ * 获取存储空间估算（用于调试）
+ * 返回已用空间和总配额
+ */
+export async function getStorageEstimate(): Promise<{ usage: number; quota: number } | null> {
+  if (navigator.storage && navigator.storage.estimate) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      const usage = estimate.usage || 0;
+      const quota = estimate.quota || 0;
+      console.log(`[IndexedDB] 存储空间: 已用 ${(usage / 1024 / 1024).toFixed(2)}MB / 总计 ${(quota / 1024 / 1024).toFixed(0)}MB (${((usage / quota) * 100).toFixed(2)}%)`);
+      return { usage, quota };
+    } catch (error) {
+      console.error('[IndexedDB] 获取存储估算失败:', error);
+      return null;
+    }
+  }
+  console.warn('[IndexedDB] 浏览器不支持 storage.estimate API');
+  return null;
 }
