@@ -2060,7 +2060,9 @@ ${productList}
     };
     onSave(logData);
     // 延迟重置状态，确保跳转后再重置
+    // v6.0: 先设 step='WELCOME' 再重置其他状态，防止 useEffect 又保存草稿
     setTimeout(() => {
+      setStep('WELCOME');  // 先设置 step，useEffect 只在 WORKSHEET/SUMMARY 保存草稿
       setSubmitMessage('');
       setIsSubmitting(false);
       setSubmitProgress(null);
