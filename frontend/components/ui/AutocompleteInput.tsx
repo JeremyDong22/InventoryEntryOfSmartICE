@@ -1,8 +1,10 @@
 /**
  * 自动完成输入框组件
- * v3.5 - 触摸下拉框时自动收起键盘，避免键盘遮挡选项
+ * v3.6 - 修复移动端下拉框选择问题，下拉框始终固定在输入框下方
  *
  * 变更历史：
+ * - v3.6: 移除触摸时自动收起键盘，改用 pointerdown 阻止 blur；
+ *         下拉框位置实时跟踪输入框；页面滚动时自动关闭下拉框
  * - v3.5: 触摸下拉框时自动收起软键盘，改善移动端选择体验
  * - v3.4: 修复移动端下拉框滚动穿透问题，添加 touch-action 和 overscroll-behavior
  * - v3.3: 新增 strictSelection 属性，启用时用户只能从下拉列表选择值
@@ -119,74 +121,115 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
     }
   }, []);
 
-  // v3.1: 当下拉框打开时，更新位置并监听滚动/调整大小
+  // v3.6: 使用 RAF 持续更新下拉框位置，确保始终跟随输入框
   useEffect(() => {
-    if (isOpen) {
-      updateDropdownPosition();
+    if (!isOpen) return;
 
-      // 监听滚动和窗口调整
-      const handleScrollOrResize = () => updateDropdownPosition();
-      window.addEventListener('scroll', handleScrollOrResize, true);
-      window.addEventListener('resize', handleScrollOrResize);
+    let rafId: number;
+    let lastTop = 0;
+    let lastLeft = 0;
+    let lastWidth = 0;
 
-      return () => {
-        window.removeEventListener('scroll', handleScrollOrResize, true);
-        window.removeEventListener('resize', handleScrollOrResize);
-      };
-    }
-  }, [isOpen, updateDropdownPosition]);
+    const updatePosition = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        // 只在位置变化时更新 state，避免不必要的重渲染
+        if (rect.bottom !== lastTop || rect.left !== lastLeft || rect.width !== lastWidth) {
+          lastTop = rect.bottom;
+          lastLeft = rect.left;
+          lastWidth = rect.width;
+          setDropdownPosition({
+            top: rect.bottom + 8,
+            left: rect.left,
+            width: rect.width,
+          });
+        }
+      }
+      rafId = requestAnimationFrame(updatePosition);
+    };
 
-  // v3.4: 下拉框内部滚动时阻止事件穿透到页面
+    updatePosition();
+
+    return () => {
+      cancelAnimationFrame(rafId);
+    };
+  }, [isOpen]);
+
+  // v3.6: 页面外部滚动时关闭下拉框并收起键盘
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // 追踪是否正在下拉框内触摸
+    let isTouchingDropdown = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      // 检查触摸是否发生在下拉框内
+      isTouchingDropdown = dropdownRef.current?.contains(e.target as Node) ?? false;
+    };
+
+    const handlePageScroll = (e: Event) => {
+      // 如果是下拉框内部的滚动，不处理
+      if (isTouchingDropdown || dropdownRef.current?.contains(e.target as Node)) {
+        return;
+      }
+      // 滚动发生在外部，关闭下拉框
+      setIsOpen(false);
+      // 收起键盘
+      if (inputRef.current && document.activeElement === inputRef.current) {
+        inputRef.current.blur();
+      }
+    };
+
+    // 监听触摸开始位置
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    // 使用 capture 阶段监听滚动事件
+    window.addEventListener('scroll', handlePageScroll, true);
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('scroll', handlePageScroll, true);
+    };
+  }, [isOpen]);
+
+  // v3.6: 下拉框内部滚动时完全阻止事件穿透到页面
   const handleDropdownTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    // 完全阻止事件冒泡，防止触发页面滚动
+    e.stopPropagation();
+
     const dropdown = dropdownRef.current;
     if (!dropdown) return;
 
     const { scrollTop, scrollHeight, clientHeight } = dropdown;
     const isAtTop = scrollTop <= 0;
-    const isAtBottom = scrollTop + clientHeight >= scrollHeight;
+    const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1; // -1 容差
 
-    // 只在滚动到边界时阻止默认行为，防止穿透到页面
-    // 检查滚动方向
     const touch = e.touches[0];
     const startY = (dropdown as any)._touchStartY || touch.clientY;
     const deltaY = touch.clientY - startY;
 
-    // 向下滑动（手指向下移动，内容向上滚动）且已在顶部
-    if (deltaY > 0 && isAtTop) {
+    // 在边界处阻止默认行为，防止页面被拖动
+    if ((deltaY > 0 && isAtTop) || (deltaY < 0 && isAtBottom)) {
       e.preventDefault();
-      return;
     }
-    // 向上滑动（手指向上移动，内容向下滚动）且已在底部
-    if (deltaY < 0 && isAtBottom) {
-      e.preventDefault();
-      return;
-    }
-    // 阻止事件冒泡，防止触发页面滚动
-    e.stopPropagation();
   }, []);
 
-  // v3.4: 记录触摸起始位置
-  // v3.5: 触摸下拉框时收起键盘，避免键盘遮挡选项
+  // v3.6: 记录触摸起始位置，标记交互状态（不再收起键盘）
   const handleDropdownTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     const dropdown = dropdownRef.current;
     if (dropdown) {
       (dropdown as any)._touchStartY = e.touches[0].clientY;
     }
-    // v3.5: 标记正在与下拉框交互，防止 blur 触发 strictSelection 恢复
+    // 标记正在与下拉框交互，防止 blur 触发 strictSelection 恢复
     isInteractingWithDropdown.current = true;
-    // v3.5: 收起软键盘，让下拉框有更多显示空间
-    // 使用 blur 让输入框失去焦点，从而收起键盘
-    if (inputRef.current && document.activeElement === inputRef.current) {
-      inputRef.current.blur();
-    }
+    // v3.6: 不再自动收起键盘，让用户能正常点击选项
   }, []);
 
-  // v3.5: 触摸结束时重置交互标记
+  // v3.6: 触摸结束时重置交互标记
   const handleDropdownTouchEnd = useCallback(() => {
-    // 延迟重置，确保 click 事件先处理
+    // 延迟重置，确保 click/pointerup 事件先处理
     setTimeout(() => {
       isInteractingWithDropdown.current = false;
-    }, 200);
+    }, 300);
   }, []);
 
   // 防抖搜索
@@ -498,7 +541,7 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
             onTouchEnd={handleDropdownTouchEnd}
             className={clsx(
               'fixed z-[9999]',
-              'max-h-60 overflow-y-auto overscroll-contain',
+              'overflow-y-auto',
               'py-2',
               'rounded-[28px]',
               'border border-white/12'
@@ -507,15 +550,18 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
               top: dropdownPosition.top,
               left: dropdownPosition.left,
               width: dropdownPosition.width,
+              // v3.6: 限制下拉框不超出视口底部
+              maxHeight: `min(15rem, calc(100vh - ${dropdownPosition.top}px - 16px))`,
               background:
                 'linear-gradient(145deg, rgba(25,25,30,0.95) 0%, rgba(25,25,30,0.9) 100%)',
               backdropFilter: 'blur(48px) saturate(180%)',
               WebkitBackdropFilter: 'blur(48px) saturate(180%)',
               boxShadow:
                 '0 8px 40px rgba(0,0,0,0.5), 0 4px 16px rgba(0,0,0,0.3)',
-              // v3.4: 防止移动端滚动穿透
+              // v3.6: 仅允许垂直滚动，阻止其他触摸行为穿透
               touchAction: 'pan-y',
               WebkitOverflowScrolling: 'touch',
+              overscrollBehavior: 'contain',
             }}
           >
             {options.length === 0 ? (
@@ -527,12 +573,18 @@ export const AutocompleteInput: React.FC<AutocompleteInputProps> = ({
                 <button
                   key={option.id}
                   type="button"
-                  onMouseDown={handleDropdownMouseDown}
-                  onClick={() => selectOption(option)}
+                  // v3.6: 使用 onPointerDown 统一处理鼠标和触摸，阻止 blur
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  // v3.6: 使用 onPointerUp 触发选择，比 onClick 更可靠
+                  onPointerUp={() => selectOption(option)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                   className={clsx(
                     'w-full px-4 py-3 text-left transition-colors',
                     'flex flex-col gap-0.5',
+                    'touch-manipulation', // 移动端优化
                     index === highlightedIndex
                       ? 'bg-white/10 text-white'
                       : 'text-white/70 hover:bg-white/5 hover:text-white'
