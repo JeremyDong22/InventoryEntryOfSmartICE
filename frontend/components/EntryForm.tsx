@@ -457,7 +457,8 @@ const WorksheetScreen: React.FC<{
 
         {/* Info Section - Card Layer */}
         {/* v3.6: 调整顺序 - 图片上传在前，供应商/备注在后，避免AI识别覆盖用户输入 */}
-        <GlassCard padding="md" className="space-y-4">
+        {/* v4.1: 添加高 z-index 让供应商下拉框能覆盖下方的物品卡片 */}
+        <GlassCard padding="md" className="space-y-4" style={{ zIndex: 100 }}>
           {/* 图片上传区 - 收货单支持多张，AI识别按钮移至下方 */}
           <div className="space-y-3">
             {/* 收货单图片（多张）- 必填 */}
