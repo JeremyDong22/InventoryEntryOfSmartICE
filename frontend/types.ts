@@ -27,6 +27,7 @@ export interface AttachedImage {
   compressedSize?: number; // 压缩后大小 (bytes)
 }
 
+// v3.7 - 添加已上传图片 URL 字段，避免 localStorage 存储 base64 导致超限
 // v3.6 - 更新 DailyLog：goodsImages 改为数组支持多张货物照片（称重核对留证）
 // v3.5 - 更新 DailyLog：receiptImages 改为数组支持多张收货单
 // v3.0 - 新增 receiptImage/goodsImage 分类图片，supplierOther "其他"供应商名称
@@ -41,8 +42,10 @@ export interface DailyLog {
   notes: string;
   status: 'Stocked' | 'Pending' | 'Issue';
   attachments?: AttachedImage[];   // 兼容旧版
-  receiptImages?: AttachedImage[]; // v3.5: 收货单图片（多张）
-  goodsImages?: AttachedImage[];   // v3.6: 货物图片（多张，称重核对留证）
+  receiptImages?: AttachedImage[]; // v3.5: 收货单图片（多张）- 仅用于 UI 预览
+  goodsImages?: AttachedImage[];   // v3.6: 货物图片（多张）- 仅用于 UI 预览
+  receiptImageUrls?: string[];     // v3.7: 已上传的收货单 URL（队列存储用）
+  goodsImageUrls?: string[];       // v3.7: 已上传的货物图片 URL（队列存储用）
 }
 
 export interface ParseResult {

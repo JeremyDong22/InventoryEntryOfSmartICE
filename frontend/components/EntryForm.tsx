@@ -37,7 +37,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { DailyLog, ProcurementItem, CategoryType, AttachedImage } from '../types';
 import { usePreloadData } from '../contexts/PreloadDataContext';
 import { recognizeReceipt, RecognitionParseError } from '../services/receiptRecognitionService';
-import { compressImage, generateThumbnail, formatFileSize } from '../services/imageService';
+import { compressImage, generateThumbnail, formatFileSize, compressForUpload } from '../services/imageService';
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
 import { SubmitProgress } from '../services/inventoryService';
 import { addToUploadQueue } from '../services/uploadQueueService';
@@ -1748,10 +1748,36 @@ ${productList}
 
 
   // v4.6: 确认提交直接加入队列（后台上传，用户无需等待）+ AI 使用统计
-  const handleSummaryConfirm = () => {
+  // v5.8: 改为 async，提交前压缩图片解决 localStorage 5MB 限制
+  const handleSummaryConfirm = async () => {
     const validItems = items.filter(i => i.name.trim() !== '');
 
-    // 构建日志数据
+    // v5.8: 压缩图片用于上传（300KB/张），解决 localStorage 限制
+    // AI 识别用的是高清原图，上传/存储用压缩版本
+    let compressedReceiptImages: AttachedImage[] | undefined;
+    let compressedGoodsImages: AttachedImage[] | undefined;
+
+    if (receiptImages.length > 0) {
+      console.log(`[提交] 压缩 ${receiptImages.length} 张收货单图片...`);
+      compressedReceiptImages = await Promise.all(
+        receiptImages.map(async (img) => ({
+          ...img,
+          data: await compressForUpload(img.data, 300),
+        }))
+      );
+    }
+
+    if (goodsImages.length > 0) {
+      console.log(`[提交] 压缩 ${goodsImages.length} 张货物照片...`);
+      compressedGoodsImages = await Promise.all(
+        goodsImages.map(async (img) => ({
+          ...img,
+          data: await compressForUpload(img.data, 300),
+        }))
+      );
+    }
+
+    // 构建日志数据（使用压缩后的图片）
     const logData: Omit<DailyLog, 'id'> = {
       date: new Date().toISOString(),
       category: selectedCategory,
@@ -1761,8 +1787,8 @@ ${productList}
       totalCost: calculateGrandTotal(),
       notes: notes,
       status: 'Stocked',
-      receiptImages: receiptImages.length > 0 ? receiptImages : undefined,
-      goodsImages: goodsImages.length > 0 ? goodsImages : undefined,  // v4.7: 多张货物照片
+      receiptImages: compressedReceiptImages,
+      goodsImages: compressedGoodsImages,
     };
 
     // v4.6: 构建 AI 使用统计

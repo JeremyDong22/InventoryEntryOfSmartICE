@@ -1,10 +1,12 @@
 /**
  * 上传队列服务
+ * v1.5 - 上传成功后立即清理队列项，防止 localStorage 累积占满
  * v1.4 - 添加 localStorage 写入失败检测，返回 null 时表示保存失败
  * v1.3 - 使用 brand_id 外键替代 brandCode 字符串
  * v1.1 - 添加 AI 使用统计支持（use_ai_photo, use_ai_voice）
  *
  * 变更历史：
+ * - v1.5: 上传成功后立即从队列移除，只保留失败项用于重试
  * - v1.4: saveQueue 返回 boolean，addToQueue 保存失败时返回 null
  * - v1.3: addToQueue/addToUploadQueue 支持传入 brandId (数字外键)
  * - v1.1: addToQueue/addToUploadQueue 支持传入 aiUsage 统计
@@ -284,12 +286,16 @@ class UploadQueueManager {
       );
 
       if (result.success) {
-        // 成功
-        item.status = 'success';
-        item.result = result;
-        item.error = undefined;
-        item.updatedAt = Date.now();
-        console.log(`[队列] 上传成功: ${item.id}`);
+        // v1.5: 成功后立即从队列中移除，释放 localStorage 空间
+        const index = this.queue.findIndex(i => i.id === item.id);
+        if (index !== -1) {
+          this.queue.splice(index, 1);
+        }
+        console.log(`[队列] 上传成功并已清理: ${item.id}`);
+        // 立即保存和通知（成功项已移除）
+        this.saveQueue();
+        this.notifyListeners();
+        return; // 提前返回，不执行后面的 saveQueue
       } else {
         // 提交失败（返回错误）
         throw new Error(result.errors.join('; '));
@@ -326,12 +332,21 @@ class UploadQueueManager {
 
   /**
    * 从 localStorage 加载队列
+   * v1.5: 加载时清理所有 success 状态的历史记录（迁移旧数据）
    */
   private loadQueue() {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        this.queue = JSON.parse(stored);
+        const loaded = JSON.parse(stored) as QueueItem[];
+        // v1.5: 清理 success 状态的旧记录，只保留 pending/uploading/failed
+        const beforeCount = loaded.length;
+        this.queue = loaded.filter(item => item.status !== 'success');
+        const removedCount = beforeCount - this.queue.length;
+        if (removedCount > 0) {
+          console.log(`[队列] 清理旧的 success 记录: ${removedCount} 项`);
+          this.saveQueue(); // 保存清理后的队列
+        }
         console.log(`[队列] 加载队列: ${this.queue.length} 项`);
       }
     } catch (error) {

@@ -1,8 +1,10 @@
 /**
  * 图片压缩与上传服务
+ * v2.1 - 添加 compressForUpload 函数，生成小尺寸上传版本（解决 localStorage 限制）
  * v2.0 - 支持图片分类上传（receipt/goods）
  *
  * 变更历史：
+ * - v2.1: 新增 compressForUpload，从 Base64 生成 300KB 上传版本
  * - v2.0: uploadImageToStorage 新增 category 参数支持图片分类
  * - v1.0: 识别优先策略，保持高清晰度以确保 AI 识别准确率
  */
@@ -98,6 +100,62 @@ export const compressImage = async (
 
     reader.onerror = () => reject(new Error('文件读取失败'));
     reader.readAsDataURL(file);
+  });
+};
+
+/**
+ * v2.1: 压缩图片用于上传（从 Base64 生成小尺寸版本）
+ * 用于解决 localStorage 5MB 限制问题
+ *
+ * @param base64Data 原图 Base64 数据（AI识别用的高清版本）
+ * @param maxSizeKB 目标大小，默认 300KB
+ * @returns 压缩后的 Base64 数据
+ */
+export const compressForUpload = async (
+  base64Data: string,
+  maxSizeKB: number = 300
+): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+
+    img.onload = () => {
+      // 计算缩放：上传版本最大 1280x960
+      let { width, height } = img;
+      const maxWidth = 1280;
+      const maxHeight = 960;
+
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d')!;
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'medium';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // 递归压缩直到满足大小要求
+      let quality = 0.7;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      const targetLength = maxSizeKB * 1024 * 4 / 3;
+
+      while (dataUrl.length > targetLength && quality > 0.2) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+
+      const result = dataUrl.split(',')[1];
+      console.log(`[压缩上传] ${Math.round(base64Data.length * 3 / 4 / 1024)}KB → ${Math.round(result.length * 3 / 4 / 1024)}KB`);
+      resolve(result);
+    };
+
+    img.onerror = () => reject(new Error('图片压缩失败'));
+    img.src = `data:image/jpeg;base64,${base64Data}`;
   });
 };
 
