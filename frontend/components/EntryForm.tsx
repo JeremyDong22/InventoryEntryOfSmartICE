@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v5.8 - 自动存草稿功能：表单数据自动保存到 localStorage，重新打开时可恢复上次录入
 // v5.7 - 网络错误处理优化：区分验证阶段的网络错误和产品未找到，队列写入失败时提示用户
 // v5.6 - 修复上传倒计时结束后闪回空表单(总价=0)的问题：先跳转再重置表单状态
 // v5.5 - "其他"供应商名称保护：禁止输入保留字（其他/员工餐）或已存在的供应商名
@@ -41,6 +42,7 @@ import { compressImage, generateThumbnail, formatFileSize, compressForUpload } f
 import { voiceEntryService, RecordingStatus, VoiceEntryResult } from '../services/voiceEntryService';
 import { SubmitProgress } from '../services/inventoryService';
 import { addToUploadQueue } from '../services/uploadQueueService';
+import { saveDraft, loadDraft, clearDraft, getDraftInfo, DraftInfo, EntryDraft } from '../services/draftService';
 import { useAuth } from '../contexts/AuthContext';
 import { Icons } from '../constants';
 import { GlassCard, Button, Input, AutocompleteInput } from './ui';
@@ -212,6 +214,88 @@ const WelcomeScreen: React.FC<{ userName: string; userNickname?: string; onStart
     </div>
   );
 };
+
+// --- Draft Recovery Modal (草稿恢复弹窗) ---
+// v5.8: 检测到未完成的录入时显示恢复选项
+
+const DraftRecoveryModal: React.FC<{
+  draftInfo: DraftInfo;
+  onContinue: () => void;
+  onDiscard: () => void;
+}> = ({ draftInfo, onContinue, onDiscard }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-6 animate-fade-in">
+    {/* 背景遮罩 */}
+    <div
+      className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      onClick={onDiscard}
+    />
+
+    {/* 弹窗卡片 */}
+    <div
+      className="relative w-full max-w-sm rounded-3xl border border-white/15 p-6 animate-scale-up"
+      style={{
+        background: 'rgba(30, 30, 35, 0.85)',
+        backdropFilter: 'blur(40px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+        boxShadow: '0 24px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+      }}
+    >
+      {/* 图标 */}
+      <div className="flex justify-center mb-4">
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center"
+          style={{
+            background: 'linear-gradient(135deg, rgba(91,163,192,0.3) 0%, rgba(91,163,192,0.15) 100%)',
+            border: '1px solid rgba(91,163,192,0.3)'
+          }}
+        >
+          <Icons.Document className="w-7 h-7 text-ios-blue" />
+        </div>
+      </div>
+
+      {/* 标题 */}
+      <h3 className="text-xl font-bold text-white text-center mb-2">
+        检测到未完成的录入
+      </h3>
+
+      {/* 草稿信息 */}
+      <p className="text-white/60 text-center text-sm mb-6">
+        {draftInfo.category && (
+          <span className="text-white/80">{draftInfo.category}</span>
+        )}
+        {draftInfo.category && draftInfo.itemCount > 0 && ' · '}
+        {draftInfo.itemCount > 0 && (
+          <span className="text-white/80">{draftInfo.itemCount} 项物品</span>
+        )}
+        {(draftInfo.category || draftInfo.itemCount > 0) && <br />}
+        <span>保存于 {draftInfo.timeAgo}</span>
+      </p>
+
+      {/* 按钮组 */}
+      <div className="flex gap-3">
+        <button
+          onClick={onDiscard}
+          className="flex-1 py-3 rounded-xl border border-white/15 text-white/70 font-medium transition-all active:scale-[0.98] hover:bg-white/5"
+          style={{
+            background: 'rgba(255, 255, 255, 0.05)'
+          }}
+        >
+          重新开始
+        </button>
+        <button
+          onClick={onContinue}
+          className="flex-1 py-3 rounded-xl border border-ios-blue/30 text-white font-medium transition-all active:scale-[0.98]"
+          style={{
+            background: 'linear-gradient(135deg, rgba(91,163,192,0.4) 0%, rgba(91,163,192,0.2) 100%)',
+            boxShadow: '0 4px 16px rgba(91,163,192,0.2)'
+          }}
+        >
+          继续上次
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 // --- Category Screen (Floating Layered List) ---
 // v4.4: 分类从数据库动态读取，通过 props 传入
@@ -1151,6 +1235,10 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
   const [showTranscription, setShowTranscription] = useState(false);
   const [isSendingTranscription, setIsSendingTranscription] = useState(false);
 
+  // v5.8: 草稿恢复弹窗状态
+  const [showDraftModal, setShowDraftModal] = useState(false);
+  const [pendingDraftInfo, setPendingDraftInfo] = useState<DraftInfo | null>(null);
+
   // v4.6: AI 使用统计
   const [useAiPhotoCount, setUseAiPhotoCount] = useState(0);  // AI 识图使用次数
   const [useAiVoiceCount, setUseAiVoiceCount] = useState(0);  // 语音识别使用次数
@@ -1337,6 +1425,78 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
       }
     });
   }, []);
+
+  // v5.8: 自动保存草稿（表单数据变化时触发）
+  useEffect(() => {
+    // 只在 WORKSHEET 或 SUMMARY 步骤保存草稿
+    if (step !== 'WORKSHEET' && step !== 'SUMMARY') {
+      return;
+    }
+
+    // 检查是否有实质内容
+    const hasContent = selectedCategory ||
+                       supplier ||
+                       supplierOther ||
+                       notes ||
+                       items.some(item => item.name.trim() !== '');
+
+    if (!hasContent) {
+      return;
+    }
+
+    // 保存草稿（带防抖）
+    saveDraft({
+      step,
+      selectedCategory,
+      supplier,
+      supplierOther,
+      notes,
+      items,
+    });
+  }, [step, selectedCategory, supplier, supplierOther, notes, items]);
+
+  // v5.8: 点击"开始录入"时检测草稿
+  const handleStartEntry = () => {
+    const draftInfo = getDraftInfo();
+    if (draftInfo) {
+      // 有草稿，显示恢复弹窗
+      setPendingDraftInfo(draftInfo);
+      setShowDraftModal(true);
+    } else {
+      // 无草稿，直接进入分类选择
+      setStep('CATEGORY');
+    }
+  };
+
+  // v5.8: 恢复草稿
+  const handleRestoreDraft = () => {
+    const draft = loadDraft();
+    if (draft) {
+      setSelectedCategory(draft.selectedCategory || '');
+      setSupplier(draft.supplier || '');
+      setSupplierOther(draft.supplierOther || '');
+      setNotes(draft.notes || '');
+      setItems(draft.items.length > 0 ? draft.items : [{ name: '', specification: '', quantity: 0, unit: '', unitPrice: 0, total: 0 }]);
+      // 根据草稿步骤决定跳转位置
+      if (draft.step === 'SUMMARY') {
+        setStep('SUMMARY');
+      } else if (draft.selectedCategory) {
+        setStep('WORKSHEET');
+      } else {
+        setStep('CATEGORY');
+      }
+    }
+    setShowDraftModal(false);
+    setPendingDraftInfo(null);
+  };
+
+  // v5.8: 丢弃草稿，重新开始
+  const handleDiscardDraft = () => {
+    clearDraft();
+    setShowDraftModal(false);
+    setPendingDraftInfo(null);
+    setStep('CATEGORY');
+  };
 
   // v5.0: 分类选择 - 员工餐分类预填固定值
   const handleCategorySelect = (categoryName: string) => {
@@ -1809,6 +1969,9 @@ ${productList}
         }
         console.log(`[队列] 任务已加入队列: ${queueId}, brand_id: ${user?.brand_id}`);
 
+        // v5.8: 提交成功后清除草稿
+        clearDraft();
+
         // 显示成功提示
         setSubmitProgress('success');
         setSubmitMessage('已提交，可在上传记录中查看状态');
@@ -1895,7 +2058,7 @@ ${productList}
         <WelcomeScreen
           userName={userName}
           userNickname={userNickname}
-          onStart={() => setStep('CATEGORY')}
+          onStart={handleStartEntry}
           onOpenMenu={onOpenMenu}
         />
       )}
@@ -1957,6 +2120,15 @@ ${productList}
           onBack={() => setStep('WORKSHEET')}
           onConfirm={handleSummaryConfirm}
           onImmediateReturn={handleImmediateReturn}
+        />
+      )}
+
+      {/* v5.8: 草稿恢复弹窗 */}
+      {showDraftModal && pendingDraftInfo && (
+        <DraftRecoveryModal
+          draftInfo={pendingDraftInfo}
+          onContinue={handleRestoreDraft}
+          onDiscard={handleDiscardDraft}
         />
       )}
     </div>
