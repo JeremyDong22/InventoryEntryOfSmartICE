@@ -1156,7 +1156,7 @@ const SummaryScreen: React.FC<{
                         {item.quantity}{item.unit} × ¥{item.unitPrice}
                       </p>
                    </div>
-                   <p className="font-mono font-bold text-harbor-blue text-lg">¥{(Number(item.total) || 0).toFixed(0)}</p>
+                   <p className="font-mono font-bold text-harbor-blue text-lg">¥{(Number(item.total) || 0).toFixed(2)}</p>
                 </div>
               ))}
            </div>
@@ -2011,7 +2011,9 @@ ${productList}
               // 跳转回首页
               onSave(logData);
               // 延迟重置表单状态，确保跳转后再重置
+              // v6.0: 先设 step='WELCOME' 再重置其他状态，防止 useEffect 在 submitProgress 重置后又保存草稿
               setTimeout(() => {
+                setStep('WELCOME');  // 先设置 step，useEffect 只在 WORKSHEET/SUMMARY 保存草稿
                 setItems([{ name: '', specification: '', quantity: 1, unit: '', unitPrice: 0, total: 0 }]);
                 setSupplier('');
                 setSupplierOther('');
