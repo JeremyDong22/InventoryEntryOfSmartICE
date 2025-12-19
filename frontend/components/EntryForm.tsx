@@ -1,4 +1,5 @@
 // EntryForm - 采购录入表单
+// v6.5 - 物料名称输入防抖验证：用户停止输入 500ms 后自动验证，不再依赖 onBlur
 // v6.4 - 修复验证问题：删除行时重映射索引，AI识别后验证所有物品，日志前缀改为[表单填充]
 // v6.3 - 修复物料名称验证问题：手动修改名称时立即清除 productId 和验证错误，确保 onBlur 时重新验证
 // v6.2 - AI 二次纠偏层：识别后比对数据库物料名，使用 Gemini 纠正 OCR 错误（如"天蒜"→"大蒜"）
@@ -1406,6 +1407,8 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
   const [submitProgress, setSubmitProgress] = useState<SubmitProgress | null>(null);
   const [countdown, setCountdown] = useState<number>(0);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // v6.5: 物料名称输入防抖验证定时器（按索引存储）
+  const validationDebounceRef = useRef<Record<number, NodeJS.Timeout>>({});
 
   // 获取认证信息
   // v2.0: 使用 restaurant_id 替代 store_id
@@ -1583,6 +1586,7 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
 
     // v3.1: 手动输入名称时清除之前选择的 productId（因为名称变了）
     // v6.3: 确保清除 productId 和验证错误，防止状态不同步
+    // v6.5: 添加防抖验证，用户停止输入 500ms 后自动验证
     if (field === 'name') {
       // 用户手动输入，清除 productId，提交时会尝试匹配
       updatedItem.productId = undefined;
@@ -1592,6 +1596,18 @@ export const EntryForm: React.FC<EntryFormProps> = ({ onSave, userName, userNick
         delete newErrors[index];
         return newErrors;
       });
+
+      // v6.5: 防抖验证 - 清除之前的定时器，设置新的
+      if (validationDebounceRef.current[index]) {
+        clearTimeout(validationDebounceRef.current[index]);
+      }
+      const nameValue = value as string;
+      if (nameValue.trim()) {
+        validationDebounceRef.current[index] = setTimeout(() => {
+          console.log(`[物料验证] 防抖触发 index=${index}, name="${nameValue}"`);
+          handleMaterialNameValidation(index, nameValue);
+        }, 500);  // 500ms 防抖
+      }
     }
 
     // v2.1 - 双向计算：支持用户输入总价或单价
