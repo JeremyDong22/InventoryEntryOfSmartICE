@@ -1,4 +1,5 @@
 // 收货单图片识别服务
+// v4.0 - 添加 OpenRouter fallback：Husanai API 失败时自动切换到 OpenRouter
 // v3.0 - 添加二次纠偏层：基于文字图像相似性纠正OCR错误（如"天蒜"→"大蒜"）
 // v2.1 - JSON 解析失败时抛出带 AI 响应的错误，让用户看到智能提示
 // v2.0 - 统一使用 husanai OpenAI 兼容 API + gemini-2.5-flash-image 模型
@@ -21,10 +22,18 @@ export class RecognitionParseError extends Error {
   }
 }
 
-// Husanai OpenAI 兼容 API 配置
+// 主服务: Husanai OpenAI 兼容 API 配置
 const HUSANAI_API_KEY = import.meta.env.VITE_HUSANAI_API_KEY || '';
 const HUSANAI_API_URL = 'https://husanai.com/v1/chat/completions';
-const VISION_MODEL = 'gemini-2.5-flash-image';
+const HUSANAI_VISION_MODEL = 'gemini-2.5-flash-image';
+
+// Fallback: OpenRouter API 配置
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY || '';
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_VISION_MODEL = 'google/gemini-2.5-flash';
+
+// 兼容旧版本的变量名
+const VISION_MODEL = HUSANAI_VISION_MODEL;
 
 // 识别结果 - 与 VoiceEntryResult 结构一致，复用表单填充逻辑
 // v6.3: 添加 allOcrNames 用于 UI 显示完整信息
@@ -84,8 +93,77 @@ const RECEIPT_RECOGNITION_PROMPT = `你是一个专业的收货单/送货单识�
 5. 如果是手写单据，请仔细辨认字迹`;
 
 /**
- * 识别收货单图片（含二次纠偏层）
+ * 调用单个 API 进行图片识别
+ * @param apiUrl - API 端点
+ * @param apiKey - API Key
+ * @param model - 模型名称
+ * @param imageBase64 - 图片 base64
+ * @param mimeType - 图片 MIME 类型
+ * @param providerName - 提供商名称（用于日志）
+ */
+async function callVisionApi(
+  apiUrl: string,
+  apiKey: string,
+  model: string,
+  imageBase64: string,
+  mimeType: string,
+  providerName: string
+): Promise<string> {
+  console.log(`[收货单识别] 使用 ${providerName}，模型: ${model}`);
+
+  const requestBody = {
+    model,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${imageBase64}`
+            }
+          },
+          {
+            type: 'text',
+            text: RECEIPT_RECOGNITION_PROMPT
+          }
+        ]
+      }
+    ],
+    temperature: 0.1,
+    max_tokens: 4096
+  };
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[收货单识别] ${providerName} API 错误:`, response.status, errorText);
+    throw new Error(`${providerName} API 错误: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  console.log(`[收货单识别] ${providerName} API 响应:`, data);
+
+  const generatedText = data.choices?.[0]?.message?.content;
+  if (!generatedText) {
+    throw new Error(`${providerName} 无法提取响应文本`);
+  }
+
+  return generatedText;
+}
+
+/**
+ * 识别收货单图片（含二次纠偏层 + API Fallback）
  *
+ * v4.0 - 添加 OpenRouter fallback：Husanai API 失败时自动切换到 OpenRouter
  * v3.0 - 添加二次纠偏：
  * 1. 第一层：OCR 识别收货单图片
  * 2. 第二层：比对数据库物料名，使用 Gemini 纠正 OCR 错误（基于文字图像相似性）
@@ -100,116 +178,92 @@ export async function recognizeReceipt(
   mimeType: string,
   databaseMaterials?: Product[]
 ): Promise<ReceiptRecognitionResult | null> {
-  // v2.0: 检查 Husanai API Key 是否配置
-  if (!HUSANAI_API_KEY) {
-    console.error('[收货单识别] 错误: 未配置 VITE_HUSANAI_API_KEY 环境变量');
+  // v4.0: 检查是否至少有一个 API Key 配置
+  if (!HUSANAI_API_KEY && !OPENROUTER_API_KEY) {
+    console.error('[收货单识别] 错误: 未配置任何 API Key');
     throw new Error('收货单识别服务未配置，请联系管理员');
   }
 
   console.log('[收货单识别] 开始识别，图片大小:', Math.round(imageBase64.length * 0.75 / 1024), 'KB');
-  console.log('[收货单识别] 使用模型:', VISION_MODEL);
 
-  try {
-    // 构建 OpenAI 兼容格式请求
-    const requestBody = {
-      model: VISION_MODEL,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:${mimeType};base64,${imageBase64}`
-              }
-            },
-            {
-              type: 'text',
-              text: RECEIPT_RECOGNITION_PROMPT
-            }
-          ]
-        }
-      ],
-      temperature: 0.1,
-      max_tokens: 4096
-    };
+  let generatedText: string | null = null;
+  let lastError: Error | null = null;
 
-    // 调用 Husanai OpenAI 兼容 API
-    const response = await fetch(HUSANAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${HUSANAI_API_KEY}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[收货单识别] API 错误:', response.status, errorText);
-      throw new Error(`API 错误: ${response.status} - ${errorText}`);
+  // v4.0: 先尝试 Husanai，失败后 fallback 到 OpenRouter
+  if (HUSANAI_API_KEY) {
+    try {
+      generatedText = await callVisionApi(
+        HUSANAI_API_URL,
+        HUSANAI_API_KEY,
+        HUSANAI_VISION_MODEL,
+        imageBase64,
+        mimeType,
+        'Husanai'
+      );
+    } catch (error) {
+      console.warn('[收货单识别] Husanai 请求失败，尝试 OpenRouter fallback:', error);
+      lastError = error instanceof Error ? error : new Error(String(error));
     }
-
-    const data = await response.json();
-    console.log('[收货单识别] API 响应:', data);
-
-    // 提取生成的文本（OpenAI 格式）
-    const generatedText = data.choices?.[0]?.message?.content;
-    if (!generatedText) {
-      console.error('[收货单识别] 无法提取响应文本');
-      return null;
-    }
-
-    console.log('[收货单识别] 原始响应文本:', generatedText);
-
-    // 解析 JSON
-    const result = parseJsonResponse(generatedText);
-    if (!result) {
-      console.error('[收货单识别] JSON 解析失败，AI 回复:', generatedText);
-      // v2.1: 抛出带 AI 响应的错误，让调用方可以展示给用户
-      throw new RecognitionParseError(generatedText);
-    }
-
-    // 验证和修正数据
-    const validated = validateAndFixResult(result);
-    console.log('[收货单识别] 第一层识别完成:', validated);
-
-    // v3.0: 第二层纠偏 - 使用数据库物料列表纠正 OCR 错误
-    if (databaseMaterials && databaseMaterials.length > 0) {
-      console.log('[收货单识别] 开始第二层纠偏，数据库物料总数:', databaseMaterials.length);
-
-      // 提取所有物料名
-      const ocrNames = validated.items.map(item => item.name);
-
-      // 调用纠偏服务
-      const correctionResult = await correctMaterialNames(ocrNames, databaseMaterials);
-
-      if (correctionResult.hasCorrections) {
-        console.log('[收货单识别] 纠偏完成，发现错误:', correctionResult.corrections);
-
-        // 应用纠偏到物料列表
-        validated.items = applyCorrections(validated.items, correctionResult.corrections);
-
-        // v6.3: 将纠偏映射表和所有 OCR 名称附加到结果中（供 UI 展示）
-        validated.corrections = correctionResult.corrections;
-        validated.allOcrNames = correctionResult.allOcrNames;
-
-        console.log('[收货单识别] 纠偏后的物料列表:', validated.items);
-      } else {
-        console.log('[收货单识别] 无需纠偏');
-      }
-    } else {
-      console.log('[收货单识别] 未提供数据库物料列表，跳过纠偏');
-    }
-
-    console.log('[收货单识别] 最终识别结果:', validated);
-    return validated;
-
-  } catch (error) {
-    console.error('[收货单识别] 识别失败:', error);
-    // 重新抛出错误以便调用方处理
-    throw error;
   }
+
+  // Fallback: 使用 OpenRouter
+  if (!generatedText && OPENROUTER_API_KEY) {
+    try {
+      console.log('[收货单识别] 切换到 OpenRouter fallback');
+      generatedText = await callVisionApi(
+        OPENROUTER_API_URL,
+        OPENROUTER_API_KEY,
+        OPENROUTER_VISION_MODEL,
+        imageBase64,
+        mimeType,
+        'OpenRouter'
+      );
+    } catch (error) {
+      console.error('[收货单识别] OpenRouter fallback 也失败:', error);
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+
+  // 两个服务都失败
+  if (!generatedText) {
+    throw lastError || new Error('所有识别服务都不可用');
+  }
+
+  console.log('[收货单识别] 原始响应文本:', generatedText);
+
+  // 解析 JSON
+  const result = parseJsonResponse(generatedText);
+  if (!result) {
+    console.error('[收货单识别] JSON 解析失败，AI 回复:', generatedText);
+    throw new RecognitionParseError(generatedText);
+  }
+
+  // 验证和修正数据
+  const validated = validateAndFixResult(result);
+  console.log('[收货单识别] 第一层识别完成:', validated);
+
+  // v3.0: 第二层纠偏 - 使用数据库物料列表纠正 OCR 错误
+  if (databaseMaterials && databaseMaterials.length > 0) {
+    console.log('[收货单识别] 开始第二层纠偏，数据库物料总数:', databaseMaterials.length);
+
+    const ocrNames = validated.items.map(item => item.name);
+    const correctionResult = await correctMaterialNames(ocrNames, databaseMaterials);
+
+    if (correctionResult.hasCorrections) {
+      console.log('[收货单识别] 纠偏完成，发现错误:', correctionResult.corrections);
+      validated.items = applyCorrections(validated.items, correctionResult.corrections);
+      validated.corrections = correctionResult.corrections;
+      validated.allOcrNames = correctionResult.allOcrNames;
+      console.log('[收货单识别] 纠偏后的物料列表:', validated.items);
+    } else {
+      console.log('[收货单识别] 无需纠偏');
+    }
+  } else {
+    console.log('[收货单识别] 未提供数据库物料列表，跳过纠偏');
+  }
+
+  console.log('[收货单识别] 最终识别结果:', validated);
+  return validated;
 }
 
 /**
@@ -294,33 +348,61 @@ function validateAndFixResult(result: any): ReceiptRecognitionResult {
 }
 
 /**
- * 检查图片识别 API 是否可用
+ * 检查图片识别 API 是否可用（支持 fallback）
  */
 export async function checkVisionApiHealth(): Promise<boolean> {
-  if (!HUSANAI_API_KEY) {
-    console.warn('[收货单识别] API Key 未配置');
-    return false;
+  // 检查 Husanai
+  if (HUSANAI_API_KEY) {
+    try {
+      const response = await fetch(HUSANAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${HUSANAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: HUSANAI_VISION_MODEL,
+          messages: [{ role: 'user', content: 'Hello' }],
+          max_tokens: 10
+        })
+      });
+
+      if (response.ok) {
+        console.log('[收货单识别] Husanai 服务正常');
+        return true;
+      }
+    } catch {
+      console.warn('[收货单识别] Husanai 服务不可用');
+    }
   }
 
-  try {
-    // 发送一个简单的文本请求来检查 API
-    const response = await fetch(HUSANAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${HUSANAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        messages: [{ role: 'user', content: 'Hello' }],
-        max_tokens: 10
-      })
-    });
+  // Fallback: 检查 OpenRouter
+  if (OPENROUTER_API_KEY) {
+    try {
+      const response = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: OPENROUTER_VISION_MODEL,
+          messages: [{ role: 'user', content: 'Hello' }],
+          max_tokens: 10
+        })
+      });
 
-    return response.ok;
-  } catch {
-    return false;
+      if (response.ok) {
+        console.log('[收货单识别] OpenRouter fallback 服务正常');
+        return true;
+      }
+    } catch {
+      console.warn('[收货单识别] OpenRouter fallback 服务不可用');
+    }
   }
+
+  console.warn('[收货单识别] 所有 API 服务都不可用');
+  return false;
 }
 
 // 兼容旧函数名
